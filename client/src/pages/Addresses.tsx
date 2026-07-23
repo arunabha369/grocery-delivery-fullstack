@@ -24,9 +24,10 @@ const Addresses = () => {
     };
 
     const getLocation = (retries = 3): Promise<{ lat: number; lng: number }> => {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             if (!navigator.geolocation) {
-                reject(new Error("Geolocation not supported"));
+                toast.error("Geolocation not supported. Using default coordinates.");
+                resolve({ lat: 0, lng: 0 });
                 return;
             }
 
@@ -43,7 +44,9 @@ const Addresses = () => {
                             retries--;
                             setTimeout(attempt, 1000);
                         } else {
-                            reject(new Error(error.message || "Failed to get location after retries"));
+                            console.warn("Geolocation error:", error.message);
+                            toast.error("Location unavailable. Using default coordinates.");
+                            resolve({ lat: 0, lng: 0 });
                         }
                     },
                     {
