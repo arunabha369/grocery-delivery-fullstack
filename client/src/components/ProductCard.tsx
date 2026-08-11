@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import type { Product } from "../types";
-import { Plus, Star } from "lucide-react";
+import { Minus, Plus, Star } from "lucide-react";
 import { useCart } from "../context/CartContext";
 
 interface Props {
@@ -10,8 +10,11 @@ interface Props {
 const ProductCard = ({ product }: Props) => {
     const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "$";
 
-    const { addToCart } = useCart();
+    const { items, addToCart, updateQuantity, removeFromCart } = useCart();
     const navigate = useNavigate();
+
+    const cartItem = items.find((item) => item.product.id === product.id);
+    const quantity = cartItem?.quantity || 0;
 
     return (
         <div className="bg-white rounded-2xl overflow-hidden shadow hover:shadow-md transition-all duration-300 group animate-fade-in cursor-pointer" onClick={() => navigate(`/products/${product.id}`)}>
@@ -36,7 +39,7 @@ const ProductCard = ({ product }: Props) => {
                     </div>
                 )}
 
-                {/* Price + Add */}
+                {/* Price + Add / Quantity Stepper */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1 truncate">
                         <span className="text-base font-medium">
@@ -52,15 +55,36 @@ const ProductCard = ({ product }: Props) => {
                         )}
                     </div>
 
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            addToCart(product);
-                        }}
-                        className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
-                    >
-                        <Plus className="size-3.5" />
-                    </button>
+                    {quantity > 0 ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                                onClick={() => {
+                                    if (quantity === 1) removeFromCart(product.id);
+                                    else updateQuantity(product.id, quantity - 1);
+                                }}
+                                className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
+                            >
+                                <Minus className="size-3.5" />
+                            </button>
+                            <span className="text-sm font-semibold w-5 text-center">{quantity}</span>
+                            <button
+                                onClick={() => updateQuantity(product.id, quantity + 1)}
+                                className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
+                            >
+                                <Plus className="size-3.5" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(product);
+                            }}
+                            className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
+                        >
+                            <Plus className="size-3.5" />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

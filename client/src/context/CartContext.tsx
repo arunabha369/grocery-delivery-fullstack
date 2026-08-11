@@ -35,7 +35,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
             }
             return [...prev, { product, quantity }];
         });
-        setIsCartOpen(true);
+        // Sidebar no longer auto-opens on add — user can open it via the cart icon
     };
 
     const removeFromCart = (productId: string) => {
