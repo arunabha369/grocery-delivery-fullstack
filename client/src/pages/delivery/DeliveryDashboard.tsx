@@ -1,12 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { PackageIcon, NavigationIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { NavigationIcon } from "lucide-react";
 import OtpModal from "../../components/Delivery/OtpModal";
 import CancelModal from "../../components/Delivery/CancelModal";
 import DeliveryOrderCard from "../../components/Delivery/DeliveryOrderCard";
-import Loading from "../../components/Loading";
-import type { Order } from "../../types";
-import axios from "axios";
-import toast from "react-hot-toast";
+import EmptyState from "../../components/ui/EmptyState";
+import { ListSkeleton } from "../../components/ui/Skeleton";
+import { NoOrdersArt, ScooterArt } from "../../components/illustrations";
+import type { DeliveryPartner, Order } from "../../types";
+import { getErrorMessage } from "../../lib/errors";
+import { formatDate } from "../../lib/format";
 
 const API_URL = import.meta.env.VITE_BASE_URL || "http://localhost:5000/api";
 
@@ -14,11 +19,26 @@ const getAuthHeaders = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("delivery_token")}` },
 });
 
+type Tab = "active" | "completed";
+
+async function loadOrders(tab: Tab): Promise<{ tab: Tab; orders: Order[] }> {
+    try {
+        const { data } = await axios.get(`${API_URL}/delivery/my-deliveries?status=${tab}`, getAuthHeaders());
+        return { tab, orders: data.orders };
+    } catch (error) {
+        toast.error(getErrorMessage(error, "Failed to load deliveries"));
+        return { tab, orders: [] };
+    }
+}
+
+const NoActiveArt = (props: { className?: string }) => <ScooterArt speedLines={false} {...props} />;
+
 export default function DeliveryDashboard() {
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [tab, setTab] = useState<"active" | "completed">("active");
+    const partner = useOutletContext<DeliveryPartner>();
+    const [tab, setTab] = useState<Tab>("active");
+    const [result, setResult] = useState<{ tab: Tab; orders: Order[] } | null>(null);
     const [tracking, setTracking] = useState(false);
+    const [updatingId, setUpdatingId] = useState<string | null>(null);
 
     // OTP modal
     const [otpModal, setOtpModal] = useState<string | null>(null);
@@ -30,21 +50,21 @@ export default function DeliveryDashboard() {
     const [cancelReason, setCancelReason] = useState("");
     const watchIdRef = useRef<number | null>(null);
 
-    const fetchOrders = async () => {
-        setLoading(true);
-        try {
-            const { data } = await axios.get(`${API_URL}/delivery/my-deliveries?status=${tab}`, getAuthHeaders());
-            setOrders(data.orders);
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed to load deliveries");
-        } finally {
-            setLoading(false);
-        }
-    };
+    const loading = result?.tab !== tab;
+    const orders = useMemo(() => result?.orders ?? [], [result]);
 
     useEffect(() => {
-        fetchOrders();
+        let ignore = false;
+        loadOrders(tab).then((res) => {
+            // Ignore responses for a tab the partner has already switched away from
+            if (!ignore) setResult(res);
+        });
+        return () => {
+            ignore = true;
+        };
     }, [tab]);
+
+    const refresh = async () => setResult(await loadOrders(tab));
 
     // send location every 10s for active deliveries
     useEffect(() => {
@@ -84,13 +104,24 @@ export default function DeliveryDashboard() {
         };
     }, [orders, tracking]);
 
+    const toggleTracking = () => {
+        if (!tracking && !navigator.geolocation) {
+            toast.error("Location sharing isn't supported on this device");
+            return;
+        }
+        setTracking((prev) => !prev);
+    };
+
     const handleUpdateStatus = async (orderId: string, status: string) => {
+        setUpdatingId(orderId);
         try {
             await axios.put(`${API_URL}/delivery/my-deliveries/${orderId}/status`, { status }, getAuthHeaders());
             toast.success(`Status updated to ${status}`);
-            fetchOrders();
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed");
+            await refresh();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to update status"));
+        } finally {
+            setUpdatingId(null);
         }
     };
 
@@ -102,9 +133,9 @@ export default function DeliveryDashboard() {
             toast.success("Delivery completed!");
             setOtpModal(null);
             setOtp("");
-            fetchOrders();
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || error?.message);
+            await refresh();
+        } catch (error) {
+            toast.error(getErrorMessage(error));
         } finally {
             setSubmitting(false);
         }
@@ -118,9 +149,9 @@ export default function DeliveryDashboard() {
             toast.success("Delivery cancelled");
             setCancelModal(null);
             setCancelReason("");
-            fetchOrders();
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed");
+            await refresh();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to cancel delivery"));
         } finally {
             setSubmitting(false);
         }
@@ -128,41 +159,54 @@ export default function DeliveryDashboard() {
 
     return (
         <div className="space-y-6">
-            {/* Tabs + Tracking toggle */}
-            <div className="flex items-center gap-2 flex-wrap">
+            <div>
+                <p className="text-sm text-app-text-light">{formatDate(new Date().toISOString(), { weekday: "long", month: "long", day: "numeric" })}</p>
+                <h1 className="mt-1 text-3xl font-semibold tracking-tight text-app-green">Hi, {partner.name.split(" ")[0]}</h1>
+            </div>
+
+            {/* Location sharing */}
+            <section className={`flex items-center justify-between gap-4 rounded-2xl p-4 sm:p-5 ${tracking ? "bg-app-green text-white" : "card"}`}>
+                <div className="flex items-center gap-3">
+                    <span className={`flex-center relative size-11 shrink-0 rounded-xl ${tracking ? "bg-white/10" : "bg-app-cream text-app-green"}`}>
+                        {tracking && <span className="absolute inset-0 animate-ping rounded-xl bg-emerald-400/30" />}
+                        <NavigationIcon className={`size-5 ${tracking ? "text-emerald-300" : ""}`} />
+                    </span>
+                    <div>
+                        <p className="font-semibold">{tracking ? "Sharing your live location" : "Location sharing is off"}</p>
+                        <p className={`text-xs ${tracking ? "text-white/70" : "text-app-text-light"}`}>Customers can follow you on the map during active deliveries.</p>
+                    </div>
+                </div>
+                <button type="button" role="switch" aria-checked={tracking} aria-label="Share live location" onClick={toggleTracking} className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${tracking ? "bg-emerald-400" : "bg-zinc-300"}`}>
+                    <span className={`absolute top-0.5 left-0.5 size-6 rounded-full bg-white shadow-sm transition-transform ${tracking ? "translate-x-5" : ""}`} />
+                </button>
+            </section>
+
+            {/* Tabs */}
+            <div className="grid grid-cols-2 rounded-2xl bg-app-cream-dark p-1" role="tablist" aria-label="Deliveries">
                 {(["active", "completed"] as const).map((t) => (
-                    <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors ${tab === t ? "bg-app-green text-white" : "bg-white text-zinc-600 hover:bg-app-cream border border-app-border"}`}>
+                    <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`rounded-xl py-2.5 text-sm font-semibold ${tab === t ? "bg-white text-app-green shadow-sm" : "text-app-text-light hover:text-app-green"}`}>
                         {t === "active" ? "Active" : "Completed"}
+                        {result?.tab === t && <span className="ml-1.5 text-xs font-medium text-app-text-light">({orders.length})</span>}
                     </button>
                 ))}
-                <div className="ml-auto">
-                    <button onClick={() => setTracking((prev) => !prev)} className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors flex items-center gap-1.5 ${tracking ? "bg-green-600 text-white" : "bg-white text-zinc-600 border border-app-border hover:bg-app-cream"}`}>
-                        <NavigationIcon className={`w-3.5 h-3.5 ${tracking ? "animate-pulse" : ""}`} />
-                        {tracking ? "Sharing Location" : "Share Location"}
-                    </button>
-                </div>
             </div>
 
             {/* Orders */}
             {loading ? (
-                <Loading />
+                <ListSkeleton rows={2} className="h-64" />
             ) : orders.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-2xl border border-app-border">
-                    <PackageIcon className="size-12 text-app-border mx-auto mb-3" />
-                    <p className="text-lg font-semibold text-zinc-900 mb-1">No {tab} deliveries</p>
-                    <p className="text-sm text-zinc-500">{tab === "active" ? "You'll see new assignments here" : "Completed deliveries will appear here"}</p>
+                <div className="card">
+                    <EmptyState art={tab === "active" ? NoActiveArt : NoOrdersArt} title={tab === "active" ? "No active deliveries" : "No completed deliveries yet"} description={tab === "active" ? "New assignments will appear here as soon as the store assigns them to you." : "Deliveries you complete will be listed here."} />
                 </div>
             ) : (
                 <div className="space-y-4">
                     {orders.map((order) => (
-                        <DeliveryOrderCard key={order.id} order={order} tab={tab} handleUpdateStatus={handleUpdateStatus} setOtpModal={setOtpModal} setCancelModal={setCancelModal} />
+                        <DeliveryOrderCard key={order.id} order={order} tab={tab} updating={updatingId === order.id} handleUpdateStatus={handleUpdateStatus} setOtpModal={setOtpModal} setCancelModal={setCancelModal} />
                     ))}
                 </div>
             )}
 
-            {/* OTP Modal */}
             {otpModal && <OtpModal setOtpModal={setOtpModal} otp={otp} setOtp={setOtp} handleComplete={handleComplete} submitting={submitting} />}
-            {/* Cancel Modal */}
             {cancelModal && <CancelModal setCancelModal={setCancelModal} cancelReason={cancelReason} setCancelReason={setCancelReason} handleCancel={handleCancel} submitting={submitting} />}
         </div>
     );

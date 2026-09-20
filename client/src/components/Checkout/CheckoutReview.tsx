@@ -1,54 +1,82 @@
-import { CheckIcon, TruckIcon } from "lucide-react";
-import type { Address } from "../../types";
+import { ArrowLeftIcon, BanknoteIcon, CircleCheckIcon, CreditCardIcon, Loader2Icon, LockIcon, MapPinIcon } from "lucide-react";
+import type { Address, CartItem } from "../../types";
+import { formatPrice } from "../../lib/format";
 
 interface CheckoutReviewProps {
     address: Address;
-    items: any[];
-    handlePlaceOrder: () => void;
-    loading: boolean;
+    paymentMethod: string;
+    items: CartItem[];
     total: number;
+    loading: boolean;
+    onPlaceOrder: () => void;
+    onEditStep: (step: "address" | "payment") => void;
 }
 
-export default function CheckoutReview({ address, items, handlePlaceOrder, loading, total }: CheckoutReviewProps) {
-    const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "$";
+export default function CheckoutReview({ address, paymentMethod, items, total, loading, onPlaceOrder, onEditStep }: CheckoutReviewProps) {
+    const isCard = paymentMethod === "card";
 
     return (
-        <div className="bg-white rounded-2xl p-6 animate-fade-in">
-            <h2 className="text-lg font-semibold text-app-green mb-5 flex items-center gap-2">
-                <CheckIcon className="size-5" /> Review Your Order
+        <div className="card animate-fade-in p-5 sm:p-6">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-app-green">
+                <CircleCheckIcon className="size-5" /> Review your order
             </h2>
+            <p className="mt-1 text-sm text-app-text-light">Please confirm the details below before placing your order.</p>
 
-            {/* Delivery Info */}
-            <div className="mb-5 p-4 bg-app-cream rounded-xl">
-                <div className="flex items-center gap-2 mb-2">
-                    <TruckIcon className="size-4 text-app-green" />
-                    <span className="text-sm font-semibold text-app-green">Delivery Address</span>
-                </div>
-                <p className="text-sm text-app-text-light">
-                    {address.label} — {address.address}, {address.city}, {address.state} {address.zip}
-                </p>
-            </div>
-
-            {/* Items */}
-            <div className="space-y-3 mb-5">
-                {items.map((item) => (
-                    <div key={item.product.id} className="flex items-center gap-3">
-                        <img src={item.product.image} alt={item.product.name} className="size-12 rounded-lg object-cover" />
-                        <div className="flex-1">
-                            <p className="text-sm font-medium text-app-green">{item.product.name}</p>
-                            <p className="text-xs text-app-text-light">Qty: {item.quantity}</p>
-                        </div>
-                        <span className="text-sm font-semibold">
-                            {currency}
-                            {(item.product.price * item.quantity).toFixed(2)}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-app-cream p-4">
+                    <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-xs font-semibold tracking-wide text-app-text-light uppercase">
+                            <MapPinIcon className="size-3.5" /> Deliver to
                         </span>
+                        <button type="button" onClick={() => onEditStep("address")} className="rounded text-xs font-semibold text-app-orange-dark hover:underline">
+                            Change
+                        </button>
                     </div>
-                ))}
+                    <p className="mt-2 text-sm font-semibold text-app-green">{address.label}</p>
+                    <p className="text-sm text-zinc-600">
+                        {address.address}, {address.city}, {address.state} {address.zip}
+                    </p>
+                </div>
+                <div className="rounded-2xl bg-app-cream p-4">
+                    <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-xs font-semibold tracking-wide text-app-text-light uppercase">
+                            {isCard ? <CreditCardIcon className="size-3.5" /> : <BanknoteIcon className="size-3.5" />} Payment
+                        </span>
+                        <button type="button" onClick={() => onEditStep("payment")} className="rounded text-xs font-semibold text-app-orange-dark hover:underline">
+                            Change
+                        </button>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-app-green">{isCard ? "Credit / debit card" : "Cash on delivery"}</p>
+                    <p className="text-sm text-zinc-600">{isCard ? "Secure payment via Stripe" : "Pay when your order arrives"}</p>
+                </div>
             </div>
 
-            <button onClick={handlePlaceOrder} disabled={loading} className="w-full py-3 bg-app-orange text-white font-semibold rounded-xl hover:bg-app-orange-dark transition-colors disabled:opacity-60 active:scale-[0.98]">
-                {loading ? "Placing Order..." : `Place Order — ${currency}${total.toFixed(2)}`}
-            </button>
+            <ul className="mt-5 divide-y divide-app-border/70">
+                {items.map((item) => (
+                    <li key={item.product.id} className="flex items-center gap-3 py-3">
+                        <div className="size-14 shrink-0 rounded-xl bg-app-cream p-1.5">
+                            <img src={item.product.image} alt="" className="size-full object-contain mix-blend-multiply" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-app-text">{item.product.name}</p>
+                            <p className="text-xs text-app-text-light">
+                                {item.quantity} × {formatPrice(item.product.price)}
+                            </p>
+                        </div>
+                        <span className="text-sm font-semibold text-app-green">{formatPrice(item.product.price * item.quantity)}</span>
+                    </li>
+                ))}
+            </ul>
+
+            <div className="mt-4 flex flex-col-reverse gap-3 border-t border-app-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <button type="button" onClick={() => onEditStep("payment")} disabled={loading} className="btn btn-ghost">
+                    <ArrowLeftIcon className="size-4" /> Back
+                </button>
+                <button type="button" onClick={onPlaceOrder} disabled={loading} className="btn btn-primary h-12 rounded-xl px-8 text-base">
+                    {loading ? <Loader2Icon className="size-5 animate-spin" /> : <LockIcon className="size-4" />}
+                    {loading ? (isCard ? "Redirecting to payment…" : "Placing order…") : `Place order · ${formatPrice(total)}`}
+                </button>
+            </div>
         </div>
     );
 }

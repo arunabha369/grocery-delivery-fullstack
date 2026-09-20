@@ -1,93 +1,83 @@
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { LeafIcon, PlusIcon, StarIcon } from "lucide-react";
 import type { Product } from "../types";
-import { Minus, Plus, Star } from "lucide-react";
 import { useCart } from "../context/CartContext";
+import { formatPrice } from "../lib/format";
+import QuantityStepper from "./ui/QuantityStepper";
 
-interface Props {
-    product: Product;
-}
+const ProductCard = ({ product }: { product: Product }) => {
+    const { items, addToCart, updateQuantity } = useCart();
 
-const ProductCard = ({ product }: Props) => {
-    const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "$";
-
-    const { items, addToCart, updateQuantity, removeFromCart } = useCart();
-    const navigate = useNavigate();
-
-    const cartItem = items.find((item) => item.product.id === product.id);
-    const quantity = cartItem?.quantity || 0;
+    const quantity = items.find((item) => item.product.id === product.id)?.quantity ?? 0;
+    const outOfStock = product.stock <= 0;
 
     return (
-        <div className="bg-white rounded-2xl overflow-hidden shadow hover:shadow-md transition-all duration-300 group animate-fade-in cursor-pointer" onClick={() => navigate(`/products/${product.id}`)}>
+        <article className="group relative flex flex-col rounded-2xl border border-app-border/70 bg-white p-2 shadow-card transition duration-300 animate-fade-in hover:-translate-y-0.5 hover:shadow-card-hover">
             {/* Image */}
-            <div className="relative aspect-square overflow-hidden">
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover p-4 group-hover:p-2 transition-all duration-300" />
+            <div className="relative aspect-square overflow-hidden rounded-xl bg-app-cream/80">
+                {/* multiply blends white product-photo backgrounds into the tile colour */}
+                <img src={product.image} alt="" loading="lazy" className={`size-full object-contain p-4 mix-blend-multiply transition-transform duration-500 group-hover:scale-105 ${outOfStock ? "opacity-50 grayscale" : ""}`} />
 
-                {/* Badges */}
-                <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">{product.discount > 0 && <span className="px-2 py-0.5 text-[10px] font-semibold uppercase bg-app-orange text-white rounded-full">{product.discount}% OFF</span>}</div>
+                <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
+                    {product.discount > 0 && <span className="rounded-md bg-app-orange px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">{product.discount}% off</span>}
+                    {product.isOrganic && (
+                        <span className="inline-flex items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-600/15 ring-inset">
+                            <LeafIcon className="size-2.5" /> Organic
+                        </span>
+                    )}
+                </div>
+
+                {outOfStock && <span className="absolute inset-x-2 bottom-2 rounded-lg bg-white/90 py-1 text-center text-xs font-semibold text-app-text-light backdrop-blur-sm">Out of stock</span>}
             </div>
 
             {/* Info */}
-            <div className="p-3.5 text-zinc-700">
-                <h3 className="text-sm leading-snug mb-1.5 line-clamp-2">{product.name}</h3>
+            <div className="flex flex-1 flex-col px-1.5 pt-3 pb-1.5">
+                <h3 className="line-clamp-2 min-h-10 text-sm leading-5 font-medium text-app-text">
+                    {/* Stretched link: the whole card is clickable, the cart controls sit above it */}
+                    <Link to={`/products/${product.id}`} className="rounded after:absolute after:inset-0 after:rounded-2xl after:content-[''] hover:text-app-green-lighter">
+                        {product.name}
+                    </Link>
+                </h3>
 
-                {/* Rating */}
-                {product.rating > 0 && (
-                    <div className="flex items-center gap-1 mb-2">
-                        <Star className="size-3 text-app-warning fill-app-warning" />
-                        <span className="text-xs font-medium text-app-text">{product.rating}</span>
-                        <span className="text-xs text-app-text-light">({product.reviewCount})</span>
-                    </div>
-                )}
-
-                {/* Price + Add / Quantity Stepper */}
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1 truncate">
-                        <span className="text-base font-medium">
-                            {currency}
-                            {product.price.toFixed(1)}
-                        </span>
-                        <span className="text-xs text-app-text-light block">/{product.unit}</span>
-                        {product.originalPrice > product.price && (
-                            <span className="text-xs text-app-text-light line-through ml-1.5">
-                                {currency}
-                                {product.originalPrice.toFixed(1)}
+                <div className="mt-1.5 flex h-4 items-center gap-1 text-xs">
+                    <span className="text-app-text-light">{product.unit}</span>
+                    {product.rating > 0 && (
+                        <>
+                            <span className="mx-0.5 text-zinc-300" aria-hidden="true">
+                                ·
                             </span>
-                        )}
-                    </div>
-
-                    {quantity > 0 ? (
-                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                onClick={() => {
-                                    if (quantity === 1) removeFromCart(product.id);
-                                    else updateQuantity(product.id, quantity - 1);
-                                }}
-                                className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
-                            >
-                                <Minus className="size-3.5" />
-                            </button>
-                            <span className="text-sm font-semibold w-5 text-center">{quantity}</span>
-                            <button
-                                onClick={() => updateQuantity(product.id, quantity + 1)}
-                                className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
-                            >
-                                <Plus className="size-3.5" />
-                            </button>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                addToCart(product);
-                            }}
-                            className="size-7 rounded-full bg-app-orange text-white flex-center shrink-0 hover:bg-app-orange-dark transition-colors active:scale-95"
-                        >
-                            <Plus className="size-3.5" />
-                        </button>
+                            <StarIcon className="size-3.5 fill-app-warning text-app-warning" />
+                            <span className="font-medium text-app-text">{product.rating.toFixed(1)}</span>
+                            <span className="text-app-text-light">({product.reviewCount})</span>
+                        </>
                     )}
                 </div>
+
+                <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+                    <div className="min-w-0 leading-tight">
+                        <p className="text-base font-semibold text-app-green">{formatPrice(product.price)}</p>
+                        {product.originalPrice > product.price && <p className="text-xs text-app-text-light line-through">{formatPrice(product.originalPrice)}</p>}
+                    </div>
+
+                    <div className="relative z-10">
+                        {outOfStock ? (
+                            <span className="inline-flex h-9 items-center rounded-full bg-zinc-100 px-3 text-xs font-semibold text-zinc-500">Sold out</span>
+                        ) : quantity > 0 ? (
+                            <QuantityStepper quantity={quantity} max={product.stock} label={product.name} onChange={(q) => updateQuantity(product.id, q)} />
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => addToCart(product)}
+                                aria-label={`Add ${product.name} to cart`}
+                                className="inline-flex h-9 w-[5.75rem] items-center justify-center gap-1 rounded-full border border-app-orange/40 bg-orange-50 text-sm font-semibold text-app-orange-dark hover:border-app-orange hover:bg-app-orange hover:text-white active:scale-95"
+                            >
+                                <PlusIcon className="size-4" /> Add
+                            </button>
+                        )}
+                    </div>
+                </div>
             </div>
-        </div>
+        </article>
     );
 };
 

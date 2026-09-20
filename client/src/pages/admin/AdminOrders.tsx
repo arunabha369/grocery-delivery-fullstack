@@ -1,200 +1,231 @@
-import { useState, useEffect } from "react";
-import { TruckIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import type { DeliveryPartner } from "../../types";
-import Loading from "../../components/Loading";
+import { ChevronDownIcon, SearchIcon, TruckIcon, UserRoundPlusIcon } from "lucide-react";
+import type { DeliveryPartner, Order } from "../../types";
+import AdminPageHeader from "../../components/admin/AdminPageHeader";
+import EmptyState from "../../components/ui/EmptyState";
+import Modal from "../../components/ui/Modal";
+import { NoOrdersArt } from "../../components/illustrations";
 import api from "../../config/api";
+import { getErrorMessage } from "../../lib/errors";
+import { formatDateTime, formatPrice, pluralize, shortOrderId } from "../../lib/format";
+import { getStatusStyle, ORDER_STATUSES } from "../../lib/status";
 
 export default function AdminOrders() {
-    const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "$";
-
-    const [orders, setOrders] = useState<any[]>([]);
+    const [orders, setOrders] = useState<Order[]>([]);
     const [partners, setPartners] = useState<DeliveryPartner[]>([]);
     const [loading, setLoading] = useState(true);
-    const [assignModal, setAssignModal] = useState<string | null>(null);
+    const [statusFilter, setStatusFilter] = useState("all");
+    const [query, setQuery] = useState("");
+    const [updatingId, setUpdatingId] = useState<string | null>(null);
+    const [assignOrderId, setAssignOrderId] = useState<string | null>(null);
     const [selectedPartner, setSelectedPartner] = useState("");
+    const [assigning, setAssigning] = useState(false);
 
-    const fetchOrders = async () => {
+    const fetchOrders = useCallback(async () => {
         try {
             const { data } = await api.get("/orders/all");
             setOrders(data.orders);
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to load orders");
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to load orders"));
         } finally {
             setLoading(false);
         }
-    };
-
-    const fetchPartners = async () => {
-        try {
-            const { data } = await api.get("/admin/delivery-partners");
-            setPartners(data.partners.filter((p: DeliveryPartner) => p.isActive));
-        } catch {}
-    };
+    }, []);
 
     useEffect(() => {
         fetchOrders();
-        fetchPartners();
-    }, []);
+        api.get("/admin/delivery-partners")
+            .then(({ data }) => setPartners(data.partners.filter((p: DeliveryPartner) => p.isActive)))
+            .catch(() => {
+                // The assign dialog explains when no partners are available
+            });
+    }, [fetchOrders]);
 
     const handleStatusChange = async (id: string, newStatus: string) => {
+        setUpdatingId(id);
         try {
             await api.put(`/orders/${id}/status`, { status: newStatus });
-            toast.success("Order status updated");
-            fetchOrders();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to update status");
+            toast.success(`Order marked as ${newStatus}`);
+            await fetchOrders();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to update status"));
+        } finally {
+            setUpdatingId(null);
         }
+    };
+
+    const closeAssign = () => {
+        setAssignOrderId(null);
+        setSelectedPartner("");
     };
 
     const handleAssign = async () => {
-        if (!assignModal || !selectedPartner) return;
+        if (!assignOrderId || !selectedPartner) return;
+        setAssigning(true);
         try {
-            await api.put(`/admin/orders/${assignModal}/assign`, { partnerId: selectedPartner });
-            toast.success("Delivery partner assigned!");
-            setAssignModal(null);
-            setSelectedPartner("");
-            fetchOrders();
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed");
+            await api.put(`/admin/orders/${assignOrderId}/assign`, { partnerId: selectedPartner });
+            toast.success("Delivery partner assigned");
+            closeAssign();
+            await fetchOrders();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to assign partner"));
+        } finally {
+            setAssigning(false);
         }
     };
 
-    const statusOptions = ["Placed", "Confirmed", "Assigned", "Packed", "Out for Delivery", "Delivered", "Cancelled"];
-    const statusColors: any = {
-        Placed: "bg-blue-100 text-blue-800",
-        Confirmed: "bg-amber-100 text-amber-800",
-        Assigned: "bg-indigo-100 text-indigo-800",
-        Packed: "bg-cyan-100 text-cyan-800",
-        "Out for Delivery": "bg-purple-100 text-purple-800",
-        Delivered: "bg-green-100 text-green-800",
-        Cancelled: "bg-red-100 text-red-800",
-    };
+    const counts = useMemo(() => {
+        const c: Record<string, number> = { all: orders.length };
+        for (const o of orders) c[o.status] = (c[o.status] ?? 0) + 1;
+        return c;
+    }, [orders]);
 
-    if (loading) return <Loading />;
+    const visible = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return orders.filter((o) => {
+            if (statusFilter !== "all" && o.status !== statusFilter) return false;
+            if (!q) return true;
+            const customer = typeof o.user === "object" ? o.user : null;
+            return shortOrderId(o.id).toLowerCase().includes(q) || customer?.name?.toLowerCase().includes(q) || customer?.email?.toLowerCase().includes(q);
+        });
+    }, [orders, statusFilter, query]);
 
     return (
         <>
-            <div className="bg-white rounded-2xl shadow-sm border border-app-border overflow-hidden">
-                <div className="px-6 py-5 border-b border-app-border">
-                    <h2 className="text-xl font-semibold text-zinc-900">Orders</h2>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-app-cream/50 text-zinc-500 uppercase text-xs font-semibold">
-                            <tr>
-                                <th className="px-6 py-4">Order Details</th>
-                                <th className="px-6 py-4">Customer</th>
-                                <th className="px-6 py-4">Total</th>
-                                <th className="px-6 py-4">Delivery Partner</th>
-                                <th className="px-6 py-4">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-app-border">
-                            {orders.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-8 text-center text-zinc-500">
-                                        No orders found.
-                                    </td>
-                                </tr>
-                            ) : (
-                                orders.map((order: any) => (
-                                    <tr key={order.id} className="hover:bg-zinc-50/50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <p className="font-semibold text-zinc-900">#{order.id.slice(-6)}</p>
-                                            <p className="text-xs text-zinc-500">{new Date(order.createdAt).toLocaleString()}</p>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <p className="font-medium text-zinc-900">{order.user?.name || "Unknown User"}</p>
-                                            <p className="text-xs text-zinc-500">{order.user?.email || "No email"}</p>
-                                        </td>
-                                        <td className="px-6 py-4 font-medium">
-                                            {currency}
-                                            {order.total.toFixed(2)}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            {order.deliveryPartner ? (
-                                                <div className="flex items-center gap-2">
-                                                    <div className="size-6 rounded-full bg-app-green flex-center">
-                                                        <span className="text-white text-[10px] font-semibold">{order.deliveryPartner.name?.charAt(0)}</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-zinc-900">{order.deliveryPartner.name}</p>
-                                                        <p className="text-[10px] text-zinc-500">{order.deliveryPartner.phone}</p>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <button
-                                                    onClick={() => {
-                                                        setAssignModal(order.id);
-                                                        setSelectedPartner("");
-                                                    }}
-                                                    className="px-3 py-1.5 text-xs font-medium bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-1"
-                                                >
-                                                    <TruckIcon className="size-3" /> Assign
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <select
-                                                value={order.status}
-                                                onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border-r-8 border-transparent outline-none cursor-pointer leading-tight ${statusColors[order.status] || "bg-zinc-100 text-zinc-800"}`}
-                                            >
-                                                {statusOptions.map((s) => (
-                                                    <option key={s} value={s}>
-                                                        {s}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+            <AdminPageHeader title="Orders" description={loading ? "Loading orders…" : `${pluralize(orders.length, "order")} in total`} />
+
+            {/* Status filters */}
+            <div className="no-scrollbar -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0" role="tablist" aria-label="Filter by status">
+                {["all", ...ORDER_STATUSES].map((s) => (
+                    <button key={s} type="button" role="tab" aria-selected={statusFilter === s} onClick={() => setStatusFilter(s)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium whitespace-nowrap ${statusFilter === s ? "bg-app-green text-white" : "bg-white text-zinc-600 ring-1 ring-app-border ring-inset hover:text-app-green"}`}>
+                        {s === "all" ? "All" : s}
+                        <span className={`rounded-full px-1.5 text-xs tabular-nums ${statusFilter === s ? "bg-white/20" : "bg-app-cream text-app-text-light"}`}>{counts[s] ?? 0}</span>
+                    </button>
+                ))}
             </div>
 
-            {/* Assign Modal */}
-            {assignModal && (
-                <>
-                    <div className="fixed inset-0 bg-app-cream/80 backdrop-blur z-50" onClick={() => setAssignModal(null)} />
-                    <div className="fixed inset-0 z-50 flex-center p-4">
-                        <div className="bg-white rounded-2xl p-6 w-full max-w-sm animate-fade-in">
-                            <h3 className="text-lg font-semibold text-app-green mb-4">Assign Delivery Partner</h3>
-                            {partners.length === 0 ? (
-                                <p className="text-sm text-zinc-500 mb-4">No active delivery partners. Please onboard a partner first.</p>
-                            ) : (
-                                <div className="space-y-2 mb-5 max-h-60 overflow-y-auto">
-                                    {partners.map((p) => (
-                                        <label key={p.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selectedPartner === p.id ? "border-app-green bg-app-green/5" : "border-app-border hover:bg-app-cream"}`}>
-                                            <input type="radio" name="partner" value={p.id} checked={selectedPartner === p.id} onChange={() => setSelectedPartner(p.id)} className="text-app-green" />
-                                            <div className="size-8 rounded-full bg-app-green flex-center">
-                                                <span className="text-white text-xs font-semibold">{p.name.charAt(0)}</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-medium text-zinc-900">{p.name}</p>
-                                                <p className="text-xs text-zinc-500 capitalize">
-                                                    {p.vehicleType} • {p.phone}
-                                                </p>
-                                            </div>
-                                        </label>
-                                    ))}
-                                </div>
-                            )}
-                            <div className="flex gap-2">
-                                <button onClick={() => setAssignModal(null)} className="flex-1 py-2.5 text-sm font-medium text-zinc-600 bg-zinc-100 rounded-xl hover:bg-zinc-200 transition-colors">
-                                    Cancel
-                                </button>
-                                <button onClick={handleAssign} disabled={!selectedPartner} className="flex-1 py-2.5 text-sm font-medium text-white bg-app-green rounded-xl hover:bg-app-green-light transition-colors disabled:opacity-50">
-                                    Assign
-                                </button>
-                            </div>
-                        </div>
+            <div className="card overflow-hidden">
+                <div className="border-b border-app-border p-4">
+                    <label className="relative block max-w-md">
+                        <span className="sr-only">Search orders</span>
+                        <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400" />
+                        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by order ID, customer name or email…" className="field h-10 pl-10" />
+                    </label>
+                </div>
+
+                {loading ? (
+                    <div className="space-y-3 p-5">
+                        {Array.from({ length: 5 }, (_, i) => (
+                            <div key={i} className="skeleton h-14" />
+                        ))}
                     </div>
-                </>
-            )}
+                ) : visible.length === 0 ? (
+                    <EmptyState art={NoOrdersArt} title={orders.length === 0 ? "No orders yet" : "No matching orders"} description={orders.length === 0 ? "New orders will appear here as customers check out." : "Try another status or search term."} />
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                            <thead className="bg-app-cream/60 text-xs font-semibold tracking-wide text-app-text-light uppercase">
+                                <tr>
+                                    <th className="px-5 py-3">Order</th>
+                                    <th className="px-5 py-3">Customer</th>
+                                    <th className="px-5 py-3">Total</th>
+                                    <th className="px-5 py-3">Delivery partner</th>
+                                    <th className="px-5 py-3">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-app-border">
+                                {visible.map((order) => {
+                                    const customer = typeof order.user === "object" ? order.user : null;
+                                    const canAssign = order.status !== "Delivered" && order.status !== "Cancelled";
+                                    return (
+                                        <tr key={order.id} className="hover:bg-app-cream/40">
+                                            <td className="px-5 py-4">
+                                                <p className="font-mono text-xs font-semibold text-app-green">#{shortOrderId(order.id)}</p>
+                                                <p className="mt-0.5 text-xs text-app-text-light">{formatDateTime(order.createdAt)}</p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <p className="font-medium text-app-text">{customer?.name || "Unknown customer"}</p>
+                                                <p className="text-xs text-app-text-light">{customer?.email || "No email"}</p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <p className="font-semibold text-app-green">{formatPrice(order.total)}</p>
+                                                <p className="text-xs text-app-text-light">
+                                                    {pluralize(order.items.length, "item")} · {order.paymentMethod === "card" ? (order.isPaid ? "Paid" : "Card, unpaid") : "COD"}
+                                                </p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                {order.deliveryPartner ? (
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="flex-center size-8 rounded-full bg-app-green text-xs font-semibold text-white">{order.deliveryPartner.name?.charAt(0)}</span>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-app-text">{order.deliveryPartner.name}</p>
+                                                            <p className="text-xs text-app-text-light">{order.deliveryPartner.phone}</p>
+                                                        </div>
+                                                    </div>
+                                                ) : canAssign ? (
+                                                    <button type="button" onClick={() => setAssignOrderId(order.id)} className="btn btn-sm border border-dashed border-violet-300 bg-violet-50 text-violet-700 hover:bg-violet-100">
+                                                        <UserRoundPlusIcon className="size-3.5" /> Assign partner
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-xs text-app-text-light">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <label className="relative inline-block">
+                                                    <span className="sr-only">Order status</span>
+                                                    <select
+                                                        value={order.status}
+                                                        disabled={updatingId === order.id}
+                                                        onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                                                        className={`appearance-none rounded-full py-1.5 pr-8 pl-3 text-xs font-semibold ring-1 ring-inset outline-none disabled:opacity-60 ${getStatusStyle(order.status).badge}`}
+                                                    >
+                                                        {ORDER_STATUSES.map((s) => (
+                                                            <option key={s} value={s}>
+                                                                {s}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-2.5 size-3.5 -translate-y-1/2 opacity-70" />
+                                                </label>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
+            <Modal open={Boolean(assignOrderId)} onClose={assigning ? () => {} : closeAssign} title="Assign delivery partner" description={assignOrderId ? `Order #${shortOrderId(assignOrderId)}` : undefined} icon={<TruckIcon className="size-5 text-app-green" />} size="sm">
+                {partners.length === 0 ? (
+                    <p className="rounded-xl bg-app-cream p-4 text-sm text-app-text-light">No active delivery partners. Onboard or activate a partner first.</p>
+                ) : (
+                    <div className="max-h-72 space-y-2 overflow-y-auto" role="radiogroup" aria-label="Delivery partners">
+                        {partners.map((p) => (
+                            <label key={p.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-app-orange ${selectedPartner === p.id ? "border-app-green bg-app-green/[0.04]" : "border-app-border hover:border-app-green/30"}`}>
+                                <input type="radio" name="partner" value={p.id} checked={selectedPartner === p.id} onChange={() => setSelectedPartner(p.id)} className="sr-only" />
+                                <span className="flex-center size-9 rounded-full bg-app-green text-sm font-semibold text-white">{p.name.charAt(0)}</span>
+                                <span>
+                                    <span className="block text-sm font-medium text-app-text">{p.name}</span>
+                                    <span className="block text-xs text-app-text-light capitalize">
+                                        {p.vehicleType} · {p.phone}
+                                    </span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                )}
+                <div className="mt-5 flex gap-2">
+                    <button type="button" onClick={closeAssign} disabled={assigning} className="btn btn-outline flex-1">
+                        Cancel
+                    </button>
+                    <button type="button" onClick={handleAssign} disabled={!selectedPartner || assigning} className="btn btn-dark flex-1">
+                        {assigning ? "Assigning…" : "Assign"}
+                    </button>
+                </div>
+            </Modal>
         </>
     );
 }

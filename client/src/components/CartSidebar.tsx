@@ -1,122 +1,148 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowRightIcon, PartyPopperIcon, ShoppingBagIcon, TruckIcon, XIcon } from "lucide-react";
 import { useCart } from "../context/CartContext";
-import { ArrowRightIcon, MinusIcon, PlusIcon, ShoppingBagIcon, Trash2Icon, XIcon } from "lucide-react";
+import { useOverlay } from "../hooks/useOverlay";
+import { FREE_DELIVERY_THRESHOLD, formatPrice, getOrderPricing, pluralize } from "../lib/format";
+import { EmptyCartArt } from "./illustrations";
+import EmptyState from "./ui/EmptyState";
+import QuantityStepper from "./ui/QuantityStepper";
 
 const CartSidebar = () => {
-    const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "$";
-
-    const { items, updateQuantity, removeFromCart, cartTotal, isCartOpen, setIsCartOpen } = useCart();
-
+    const { items, updateQuantity, removeFromCart, cartTotal, cartCount, isCartOpen, setIsCartOpen } = useCart();
     const navigate = useNavigate();
+    const panelRef = useRef<HTMLElement>(null);
 
-    if (!isCartOpen) return null;
+    const close = () => setIsCartOpen(false);
+    useOverlay(isCartOpen, close);
 
-    const deliveryFee = cartTotal > 500 ? 0 : 49;
-    const grandTotal = cartTotal + deliveryFee;
+    useEffect(() => {
+        if (isCartOpen) panelRef.current?.focus();
+    }, [isCartOpen]);
+
+    const { deliveryFee } = getOrderPricing(cartTotal);
+    const freeDelivery = deliveryFee === 0;
+    const remaining = FREE_DELIVERY_THRESHOLD - cartTotal;
+    const progress = Math.min(100, (cartTotal / FREE_DELIVERY_THRESHOLD) * 100);
+
+    const goTo = (path: string) => {
+        close();
+        navigate(path);
+    };
 
     return (
-        <>
+        <div className={`fixed inset-0 z-60 ${isCartOpen ? "" : "pointer-events-none"}`} inert={!isCartOpen}>
             {/* Overlay */}
-            <div onClick={() => setIsCartOpen(false)} className="fixed inset-0 bg-black/40 z-50 transition-opacity" />
+            <div onClick={close} aria-hidden="true" className={`absolute inset-0 bg-app-green/40 backdrop-blur-[2px] transition-opacity duration-300 ${isCartOpen ? "opacity-100" : "opacity-0"}`} />
 
-            {/* Sidebar */}
-            <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 shadow-2xl flex flex-col animate-slide-in-right">
+            {/* Panel */}
+            <aside
+                ref={panelRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Shopping cart"
+                tabIndex={-1}
+                className={`absolute top-0 right-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl outline-none transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${isCartOpen ? "translate-x-0" : "translate-x-full"}`}
+            >
                 {/* Header */}
-                <div className="flex items-center justify-between p-5 border-b border-app-border">
-                    <div className="flex items-center gap-2">
-                        <ShoppingBagIcon className="size-5" />
-                        <h2 className="text-lg font-medium">Your Cart</h2>
-                        <span className="px-2 py-0.5 text-xs font-semibold bg-app-cream rounded-full">{items.length} items</span>
+                <div className="flex items-center justify-between border-b border-app-border px-5 py-4">
+                    <div className="flex items-center gap-2.5">
+                        <ShoppingBagIcon className="size-5 text-app-green" />
+                        <h2 className="text-lg font-semibold text-app-green">Your cart</h2>
+                        {cartCount > 0 && <span className="rounded-full bg-app-cream px-2 py-0.5 text-xs font-semibold text-app-text-light">{pluralize(cartCount, "item")}</span>}
                     </div>
-                    <button onClick={() => setIsCartOpen(false)} className="p-2 rounded-xl hover:bg-app-cream transition-colors">
+                    <button type="button" onClick={close} aria-label="Close cart" className="rounded-lg p-2 text-app-text-light hover:bg-app-cream hover:text-app-green">
                         <XIcon className="size-5" />
                     </button>
                 </div>
 
-                {/* Items */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                    {items.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center">
-                            <ShoppingBagIcon className="size-16 text-app-border mb-4" />
-                            <h3 className="text-lg font-medium mb-1">Your cart is empty</h3>
+                {items.length === 0 ? (
+                    <div className="flex flex-1 items-center justify-center">
+                        <EmptyState
+                            art={EmptyCartArt}
+                            title="Your cart is empty"
+                            description="Looks like you haven't added anything yet. Explore fresh produce and daily essentials."
+                            action={
+                                <button type="button" onClick={() => goTo("/products")} className="btn btn-primary">
+                                    Start shopping <ArrowRightIcon className="size-4" />
+                                </button>
+                            }
+                        />
+                    </div>
+                ) : (
+                    <>
+                        {/* Free delivery progress */}
+                        <div className="mx-5 mt-4 rounded-xl bg-app-cream px-4 py-3">
+                            <p className="flex items-center gap-2 text-sm text-app-green">
+                                {freeDelivery ? (
+                                    <>
+                                        <PartyPopperIcon className="size-4 shrink-0 text-app-orange" />
+                                        <span className="font-medium">You've unlocked free delivery!</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <TruckIcon className="size-4 shrink-0 text-app-orange" />
+                                        <span>{remaining > 0 ? <>Add <strong className="font-semibold">{formatPrice(remaining)}</strong> more for free delivery</> : "Add any item to get free delivery"}</span>
+                                    </>
+                                )}
+                            </p>
+                            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white" role="progressbar" aria-label="Progress to free delivery" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+                                <div className={`h-full rounded-full transition-[width] duration-500 ${freeDelivery ? "bg-app-success" : "bg-app-orange"}`} style={{ width: `${progress}%` }} />
+                            </div>
                         </div>
-                    ) : (
-                        items.map((item) => (
-                            <div key={item.product.id} className="flex gap-3 bg-app-cream/60 rounded-xl p-3">
-                                <img src={item.product.image} alt={item.product.name} className="size-16 rounded-lg object-cover shrink-0" />
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-semibold truncate">{item.product.name}</h4>
-                                    <p className="text-xs text-app-text-light">
-                                        {currency}
-                                        {item.product.price.toFixed(2)} / {item.product.unit}
-                                    </p>
-                                    <div className="flex items-center justify-between mt-2">
-                                        <div className="flex items-center gap-1.5">
-                                            <button onClick={() => updateQuantity(item.product.id, item.quantity - 1)} className="size-7 rounded-lg bg-white border border-app-border flex-center">
-                                                <MinusIcon className="size-3" />
-                                            </button>
 
-                                            <span className="text-sm font-semibold w-6 text-center">{item.quantity}</span>
-
-                                            <button onClick={() => updateQuantity(item.product.id, item.quantity + 1)} className="size-7 rounded-lg bg-white border border-app-border flex-center">
-                                                <PlusIcon className="size-3" />
+                        {/* Items */}
+                        <ul className="flex-1 divide-y divide-app-border/70 overflow-y-auto px-5">
+                            {items.map(({ product, quantity }) => (
+                                <li key={product.id} className="flex gap-3 py-4">
+                                    <Link to={`/products/${product.id}`} onClick={close} className="size-20 shrink-0 rounded-xl bg-app-cream p-2">
+                                        <img src={product.image} alt={product.name} className="size-full object-contain mix-blend-multiply" />
+                                    </Link>
+                                    <div className="flex min-w-0 flex-1 flex-col">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <Link to={`/products/${product.id}`} onClick={close} className="line-clamp-2 rounded text-sm font-medium text-app-text hover:text-app-green-lighter">
+                                                {product.name}
+                                            </Link>
+                                            <button type="button" onClick={() => removeFromCart(product.id)} aria-label={`Remove ${product.name}`} className="-mt-1 -mr-1 rounded-md p-1 text-zinc-400 hover:bg-red-50 hover:text-app-error">
+                                                <XIcon className="size-4" />
                                             </button>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-semibold">
-                                                {currency}
-                                                {(item.product.price * item.quantity).toFixed(2)}
-                                            </span>
-                                            <button onClick={() => removeFromCart(item.product.id)} className="p-1 text-app-text-light hover:text-app-error transition-colors">
-                                                <Trash2Icon className="size-4" />
-                                            </button>
+                                        <p className="mt-0.5 text-xs text-app-text-light">
+                                            {product.unit} · {formatPrice(product.price)}
+                                        </p>
+                                        <div className="mt-auto flex items-center justify-between pt-2">
+                                            <QuantityStepper quantity={quantity} max={product.stock} label={product.name} variant="outline" size="md" trashAtOne onChange={(q) => updateQuantity(product.id, q)} />
+                                            <span className="text-sm font-semibold text-app-green">{formatPrice(product.price * quantity)}</span>
                                         </div>
                                     </div>
+                                </li>
+                            ))}
+                        </ul>
+
+                        {/* Summary */}
+                        <div className="space-y-3 border-t border-app-border px-5 pt-4 pb-5">
+                            <dl className="space-y-1.5 text-sm">
+                                <div className="flex justify-between">
+                                    <dt className="text-app-text-light">Subtotal</dt>
+                                    <dd className="font-medium">{formatPrice(cartTotal)}</dd>
                                 </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-                {/* Footer */}
-                {items.length > 0 && (
-                    <div className="p-5 border-t border-app-border space-y-3">
-                        <div className="flex justify-between text-sm">
-                            <span className="text-app-text-light">Subtotal</span>
-                            <span className="font-medium">
-                                {currency}
-                                {cartTotal.toFixed(2)}
-                            </span>
+                                <div className="flex justify-between">
+                                    <dt className="text-app-text-light">Delivery</dt>
+                                    <dd className="font-medium">{freeDelivery ? <span className="text-app-success">Free</span> : formatPrice(deliveryFee)}</dd>
+                                </div>
+                            </dl>
+                            <p className="text-xs text-app-text-light">Taxes are calculated at checkout.</p>
+                            <button type="button" onClick={() => goTo("/checkout")} className="btn btn-primary w-full justify-between rounded-2xl px-5 py-3.5 text-base">
+                                <span>Checkout</span>
+                                <span className="flex items-center gap-2">
+                                    {formatPrice(cartTotal + deliveryFee)} <ArrowRightIcon className="size-4" />
+                                </span>
+                            </button>
                         </div>
-
-                        <div className="flex justify-between text-sm">
-                            <span className="text-app-text-light">Delivery</span>
-                            <span className="font-medium">{deliveryFee === 0 ? <span className="text-app-success">Free</span> : `${currency}${deliveryFee.toFixed(2)}`}</span>
-                        </div>
-
-                        {deliveryFee > 0 && <p className="text-xs text-app-text-light text-center">Free delivery on orders over {currency}500!</p>}
-
-                        <div className="flex justify-between text-base font-semibold border-t border-app-border pt-3">
-                            <span>Total</span>
-                            <span>
-                                {currency}
-                                {grandTotal.toFixed(2)}
-                            </span>
-                        </div>
-
-                        <button
-                            onClick={() => {
-                                setIsCartOpen(false);
-                                navigate("/checkout");
-                                window.scrollTo(0, 0);
-                            }}
-                            className="w-full py-3 bg-app-orange text-white font-semibold rounded-xl hover:bg-app-orange-dark transition-colors flex-center gap-2 active:scale-[0.98]"
-                        >
-                            Proceed to Checkout <ArrowRightIcon className="size-4" />
-                        </button>
-                    </div>
+                    </>
                 )}
-            </div>
-        </>
+            </aside>
+        </div>
     );
 };
 

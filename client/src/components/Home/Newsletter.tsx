@@ -1,22 +1,38 @@
-import { MailIcon } from "lucide-react";
+import { useState, type SubmitEvent } from "react";
+import toast from "react-hot-toast";
+import { EnvelopeArt } from "../illustrations";
 
 const Newsletter = () => {
+    const [email, setEmail] = useState("");
+
+    // No newsletter endpoint exists yet — this only confirms on the client
+    const handleSubmit = (e: SubmitEvent) => {
+        e.preventDefault();
+        toast.success("Thanks for subscribing!");
+        setEmail("");
+    };
+
     return (
-        <section className="bg-white py-18 px-4 sm:px-6 lg:px-8 rounded-3xl mx-auto  shadow-xs mt-32 mb-20">
-            <div className="max-w-2xl mx-auto text-center">
-                <div className="size-16 bg-white rounded-xl flex-center mx-auto mb-6 shadow">
-                    <MailIcon className="size-8 text-app-green" strokeWidth={1.5} />
+        <section aria-labelledby="newsletter-title" className="card mt-16 overflow-hidden sm:mt-20">
+            <div className="grid items-center gap-8 p-8 sm:p-12 md:grid-cols-[auto_1fr] lg:gap-16 lg:px-16">
+                <EnvelopeArt className="mx-auto h-auto w-44 sm:w-52 lg:w-60" />
+                <div className="text-center md:text-left">
+                    <p className="eyebrow">Newsletter</p>
+                    <h2 id="newsletter-title" className="section-title mt-2">
+                        Fresh deals, straight to your inbox
+                    </h2>
+                    <p className="mt-2 text-app-text-light">Weekly updates on seasonal produce, new arrivals and exclusive discounts.</p>
+                    <form onSubmit={handleSubmit} className="mx-auto mt-6 flex max-w-lg flex-col gap-3 sm:flex-row md:mx-0">
+                        <label htmlFor="newsletter-email" className="sr-only">
+                            Email address
+                        </label>
+                        <input id="newsletter-email" type="email" required autoComplete="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="field h-12 flex-1" />
+                        <button type="submit" className="btn btn-dark h-12 px-7">
+                            Subscribe
+                        </button>
+                    </form>
+                    <p className="mt-3 text-xs text-app-text-light">No spam, ever. Unsubscribe any time.</p>
                 </div>
-                <h2 className="text-3xl font-semibold text-app-green mb-4">Subscribe to our Newsletter</h2>
-                <p className="text-app-text-light mb-8 text-base">Get weekly updates on fresh produce, seasonal offers, and exclusive discounts right to your inbox.</p>
-
-                <form onSubmit={(e) => e.preventDefault()} className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
-                    <input type="email" placeholder="Enter your email address" required className="flex-1 px-5 py-3.5 rounded-xl border border-app-border focus:border-app-green focus:ring bg-white text-sm transition-all" />
-
-                    <button type="submit" className="px-8 py-3.5 bg-app-green text-white font-semibold rounded-xl hover:bg-app-green-light transition-colors shadow-sm whitespace-nowrap active:scale-[0.98]">
-                        Subscribe
-                    </button>
-                </form>
             </div>
         </section>
     );

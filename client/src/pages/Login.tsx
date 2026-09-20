@@ -1,96 +1,149 @@
-import { useState } from "react";
-import { heroSectionData } from "../assets/assets";
-import { Link } from "react-router-dom";
-import { BikeIcon, Loader2Icon, LockIcon, MailIcon, UserIcon } from "lucide-react";
+import { useState, type SubmitEvent } from "react";
+import { Link, Navigate, useLocation } from "react-router-dom";
+import { ArrowLeftIcon, CircleCheckIcon, EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon, UserIcon } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import toast from "react-hot-toast";
+import Logo from "../components/Logo";
+import { HeroArt } from "../components/illustrations";
+import { heroSectionData } from "../assets/assets";
+import { FREE_DELIVERY_THRESHOLD, formatPrice } from "../lib/format";
+
+const perks = ["Farm-fresh produce from local growers", `Free delivery on orders over ${formatPrice(FREE_DELIVERY_THRESHOLD)}`, "Live tracking from store to doorstep"];
 
 const Login = () => {
     const [isLoginState, setIsLoginState] = useState(true);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
-    const { login, register } = useAuth();
+    const { user, loading, login, register } = useAuth();
+    const location = useLocation();
+    const redirectTo = (location.state as { from?: string } | null)?.from || "/";
 
-    const handleSubmit = async (e: React.SubmitEvent) => {
+    if (!loading && user) return <Navigate to={redirectTo} replace />;
+
+    const handleSubmit = async (e: SubmitEvent) => {
         e.preventDefault();
-        setLoading(true);
+        setSubmitting(true);
         try {
-            if (isLoginState) {
-                await login(email, password);
-            } else {
-                await register(name, email, password);
-            }
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || error?.message);
+            // AuthContext shows its own error toasts
+            if (isLoginState) await login(email, password, redirectTo);
+            else await register(name, email, password, redirectTo);
         } finally {
-            setLoading(false);
+            setSubmitting(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex">
-            {/* Left Side */}
-            <div className="hidden lg:flex lg:w-1/2 bg-app-green relative items-center justify-center">
-                <img src={heroSectionData.hero_image} alt="" className="absolute inset-0 object-cover h-full bg-center opacity-10" />
-                <div className="relative text-center px-12">
-                    <h2 className="text-4xl font-semibold text-white mb-4">Welcome back to Instacart</h2>
-                    <p className="text-white/60 font-serif text-xl max-w-sm mx-auto">Fresh groceries and organic produce, delivered to your doorstep.</p>
+        <div className="flex min-h-screen bg-app-cream">
+            {/* Brand panel */}
+            <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-app-green p-12 text-white lg:flex xl:p-16">
+                <img src={heroSectionData.hero_image} alt="" className="pointer-events-none absolute inset-0 size-full object-cover opacity-10" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(249,115,22,0.16),transparent_40%),radial-gradient(circle_at_80%_90%,rgba(111,178,106,0.2),transparent_45%)]" />
+                <Logo tone="light" className="relative" />
+                <div className="relative mx-auto w-full max-w-md">
+                    <HeroArt className="h-auto w-full" />
                 </div>
-            </div>
+                <div className="relative">
+                    <h2 className="font-serif text-4xl leading-tight">
+                        Fresh groceries, <span className="text-orange-300 italic">delivered.</span>
+                    </h2>
+                    <ul className="mt-6 space-y-3 text-white/75">
+                        {perks.map((perk) => (
+                            <li key={perk} className="flex items-center gap-3">
+                                <CircleCheckIcon className="size-5 text-emerald-300" /> {perk}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            </aside>
 
-            {/* LRight Side */}
-            <div className="flex-1 flex-center px-4 py-12 bg-app-cream">
-                <div className="w-full max-w-md">
-                    {/* form header message */}
-                    <div className="text-center mb-8">
-                        <Link to="/" className="inline-flex items-center gap-2 mb-6">
-                            <BikeIcon className="size-8 text-app-green" />
-                            <span className="text-2xl font-semibold text-app-green">Instacart</span>
-                        </Link>
-                        <h1 className="text-2xl font-semibold text-app-green mb-2">{isLoginState ? "Sign in to your account" : "Sign up for an account"}</h1>
+            {/* Form */}
+            <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
+                <div className="flex items-center justify-between">
+                    <Link to="/" className="inline-flex items-center gap-1.5 rounded text-sm font-medium text-app-text-light hover:text-app-green">
+                        <ArrowLeftIcon className="size-4" /> Back to store
+                    </Link>
+                    <Logo className="lg:hidden" />
+                </div>
 
-                        <p className="text-sm text-app-text-light">
-                            {isLoginState ? "Don't have an account?" : "Already have an account?"}
-                            <button onClick={() => setIsLoginState(!isLoginState)} className="text-orange-500 ml-1 font-semibold hover:text-orange-600 transition-colors">
-                                {isLoginState ? "Create one" : "Sign in"}
+                <div className="flex flex-1 items-center justify-center py-10">
+                    <div className="w-full max-w-md animate-fade-in">
+                        <h1 className="text-3xl font-semibold tracking-tight text-app-green">{isLoginState ? "Welcome back" : "Create your account"}</h1>
+                        <p className="mt-2 text-app-text-light">{isLoginState ? "Sign in to continue shopping and track your orders." : "Join in seconds and get groceries delivered today."}</p>
+
+                        <div className="mt-8 grid grid-cols-2 rounded-2xl bg-app-cream-dark p-1" role="tablist" aria-label="Account">
+                            {[
+                                { label: "Sign in", active: isLoginState, value: true },
+                                { label: "Create account", active: !isLoginState, value: false },
+                            ].map((tab) => (
+                                <button key={tab.label} type="button" role="tab" aria-selected={tab.active} onClick={() => setIsLoginState(tab.value)} className={`rounded-xl py-2.5 text-sm font-semibold ${tab.active ? "bg-white text-app-green shadow-sm" : "text-app-text-light hover:text-app-green"}`}>
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+                            {!isLoginState && (
+                                <div>
+                                    <label htmlFor="name" className="field-label">
+                                        Full name
+                                    </label>
+                                    <div className="relative">
+                                        <UserIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-zinc-400" />
+                                        <input id="name" type="text" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" placeholder="Your name" className="field h-12 pl-11" />
+                                    </div>
+                                </div>
+                            )}
+                            <div>
+                                <label htmlFor="email" className="field-label">
+                                    Email address
+                                </label>
+                                <div className="relative">
+                                    <MailIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-zinc-400" />
+                                    <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" placeholder="you@example.com" className="field h-12 pl-11" />
+                                </div>
+                            </div>
+                            <div>
+                                <label htmlFor="password" className="field-label">
+                                    Password
+                                </label>
+                                <div className="relative">
+                                    <LockIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-zinc-400" />
+                                    <input
+                                        id="password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        required
+                                        minLength={isLoginState ? undefined : 6}
+                                        autoComplete={isLoginState ? "current-password" : "new-password"}
+                                        placeholder="••••••••"
+                                        className="field h-12 pr-12 pl-11"
+                                    />
+                                    <button type="button" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-2 text-zinc-400 hover:bg-app-cream hover:text-app-green">
+                                        {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                                    </button>
+                                </div>
+                                {!isLoginState && <p className="mt-1.5 text-xs text-app-text-light">Use at least 6 characters.</p>}
+                            </div>
+
+                            <button type="submit" disabled={submitting} className="btn btn-dark mt-2 h-12 w-full rounded-xl text-base">
+                                {submitting && <Loader2Icon className="size-5 animate-spin" />}
+                                {isLoginState ? "Sign in" : "Create account"}
                             </button>
+                        </form>
+
+                        <p className="mt-8 text-center text-sm text-app-text-light">
+                            Delivering for us?{" "}
+                            <Link to="/delivery/login" className="rounded font-semibold text-app-orange-dark hover:underline">
+                                Partner sign in
+                            </Link>
                         </p>
                     </div>
-
-                    {/* Login / Register Form */}
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        {!isLoginState && (
-                            <label className="text-sm flex flex-col gap-1">
-                                Name
-                                <div className="relative">
-                                    <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-app-text-light" />
-                                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="Your name" className="w-full pl-11 pr-4 py-3 text-sm bg-white rounded-xl border not-focus:border-app-border transition-all" />
-                                </div>
-                            </label>
-                        )}
-                        <label className="text-sm flex flex-col gap-1">
-                            Email Address
-                            <div className="relative">
-                                <MailIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-app-text-light" />
-                                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" className="w-full pl-11 pr-4 py-3 text-sm bg-white rounded-xl border not-focus:border-app-border transition-all" />
-                            </div>
-                        </label>
-                        <label className="text-sm flex flex-col gap-1">
-                            Password
-                            <div className="relative">
-                                <LockIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-app-text-light" />
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" className="w-full pl-11 pr-4 py-3 text-sm bg-white rounded-xl border not-focus:border-app-border transition-all" />
-                            </div>
-                        </label>
-                        <button type="submit" disabled={loading} className="flex-center w-full py-3 bg-green-950 text-white font-semibold rounded-xl hover:bg-green-900 transition-colors disabled:opacity-50">
-                            {loading ? <Loader2Icon className="animate-spin" /> : isLoginState ? "Sign In" : "Sign Up"}
-                        </button>
-                    </form>
                 </div>
-            </div>
+            </main>
         </div>
     );
 };

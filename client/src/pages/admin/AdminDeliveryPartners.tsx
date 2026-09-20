@@ -1,157 +1,213 @@
-import { useEffect, useState } from "react";
-import { PlusIcon, XIcon, TruckIcon, PhoneIcon, MailIcon } from "lucide-react";
-import type { DeliveryPartner } from "../../types";
-import Loading from "../../components/Loading";
-import api from "../../config/api";
+import { useCallback, useEffect, useState, type SubmitEvent } from "react";
 import toast from "react-hot-toast";
+import { BikeIcon, CarIcon, ChevronDownIcon, EyeIcon, EyeOffIcon, Loader2Icon, MailIcon, PhoneIcon, PlusIcon, UserRoundPlusIcon } from "lucide-react";
+import type { DeliveryPartner } from "../../types";
+import AdminPageHeader from "../../components/admin/AdminPageHeader";
+import EmptyState from "../../components/ui/EmptyState";
+import Modal from "../../components/ui/Modal";
+import { ScooterArt } from "../../components/illustrations";
+import api from "../../config/api";
+import { getErrorMessage } from "../../lib/errors";
+import { formatDate } from "../../lib/format";
+
+const emptyForm = { name: "", email: "", password: "", phone: "", vehicleType: "bike" };
+
+// ScooterArt stands in for the empty state; vehicle icons for the cards
+const vehicleIcon = (type: string) => (type === "car" ? CarIcon : BikeIcon);
+
+const NoPartnersArt = (props: { className?: string }) => <ScooterArt speedLines={false} {...props} />;
 
 export default function AdminDeliveryPartners() {
     const [partners, setPartners] = useState<DeliveryPartner[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", vehicleType: "bike" });
+    const [togglingId, setTogglingId] = useState<string | null>(null);
+    const [showPassword, setShowPassword] = useState(false);
+    const [form, setForm] = useState(emptyForm);
 
-    const fetchPartners = async () => {
+    const fetchPartners = useCallback(async () => {
         try {
             const { data } = await api.get("/admin/delivery-partners");
             setPartners(data.partners);
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed");
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to load partners"));
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchPartners();
-    }, []);
+    }, [fetchPartners]);
 
-    const handleSubmit = async (e: React.SubmitEvent) => {
+    const closeForm = () => {
+        setShowForm(false);
+        setForm(emptyForm);
+        setShowPassword(false);
+    };
+
+    const handleSubmit = async (e: SubmitEvent) => {
         e.preventDefault();
         setSaving(true);
         try {
             await api.post("/admin/delivery-partners", form);
-            toast.success("Partner onboarded successfully!");
-            setShowForm(false);
-            setForm({ name: "", email: "", password: "", phone: "", vehicleType: "bike" });
-            fetchPartners();
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed");
+            toast.success(`${form.name} has been onboarded`);
+            closeForm();
+            await fetchPartners();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to create partner"));
         } finally {
             setSaving(false);
         }
     };
 
-    const toggleActive = async (id: string, isActive: boolean) => {
+    const toggleActive = async (partner: DeliveryPartner) => {
+        setTogglingId(partner.id);
         try {
-            await api.put(`/admin/delivery-partners/${id}`, { isActive: !isActive });
-            toast.success(isActive ? "Partner deactivated" : "Partner activated");
-            fetchPartners();
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || "Failed");
+            await api.put(`/admin/delivery-partners/${partner.id}`, { isActive: !partner.isActive });
+            toast.success(partner.isActive ? `${partner.name} deactivated` : `${partner.name} activated`);
+            await fetchPartners();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to update partner"));
+        } finally {
+            setTogglingId(null);
         }
     };
 
-    if (loading) return <Loading />;
+    const set = (key: keyof typeof emptyForm) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }));
+    const activeCount = partners.filter((p) => p.isActive).length;
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold text-zinc-900">Delivery Partners</h1>
-                <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-app-green text-white text-sm font-semibold rounded-xl hover:bg-app-green-light transition-colors flex items-center gap-2">
-                    <PlusIcon className="size-4" /> Add Partner
-                </button>
-            </div>
+        <>
+            <AdminPageHeader
+                title="Delivery partners"
+                description={loading ? "Loading team…" : `${activeCount} active · ${partners.length - activeCount} inactive`}
+                actions={
+                    <button type="button" onClick={() => setShowForm(true)} className="btn btn-primary">
+                        <PlusIcon className="size-4" /> Add partner
+                    </button>
+                }
+            />
 
-            {/* Partners Grid */}
-            {partners.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-2xl border border-app-border">
-                    <TruckIcon className="size-12 text-app-border mx-auto mb-3" />
-                    <p className="text-lg font-semibold text-zinc-900 mb-1">No delivery partners</p>
-                    <p className="text-sm text-zinc-500">Onboard your first partner to get started</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {partners.map((p) => (
-                        <div key={p.id} className="bg-white rounded-2xl border border-app-border p-5 space-y-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="size-10 rounded-full bg-app-green flex-center">
-                                        <span className="text-white font-semibold text-sm">{p.name.charAt(0)}</span>
-                                    </div>
-                                    <div>
-                                        <p className="font-semibold text-zinc-900 text-sm">{p.name}</p>
-                                        <p className="text-xs text-zinc-500 capitalize">{p.vehicleType}</p>
-                                    </div>
-                                </div>
-                                <span className={`px-2.5 py-1 text-[10px] font-semibold rounded-full ${p.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{p.isActive ? "Active" : "Inactive"}</span>
-                            </div>
-                            <div className="space-y-1.5 text-sm text-zinc-600">
-                                <p className="flex items-center gap-2">
-                                    <MailIcon className="w-3.5 h-3.5 text-zinc-400" /> {p.email}
-                                </p>
-                                <p className="flex items-center gap-2">
-                                    <PhoneIcon className="w-3.5 h-3.5 text-zinc-400" /> {p.phone}
-                                </p>
-                            </div>
-                            <button onClick={() => toggleActive(p.id, p.isActive)} className={`w-full py-2 text-xs font-medium rounded-lg transition-colors ${p.isActive ? "bg-red-50 text-red-600 hover:bg-red-100" : "bg-green-50 text-green-600 hover:bg-green-100"}`}>
-                                {p.isActive ? "Deactivate" : "Activate"}
-                            </button>
-                        </div>
+            {loading ? (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {Array.from({ length: 3 }, (_, i) => (
+                        <div key={i} className="skeleton h-52 rounded-2xl" />
                     ))}
                 </div>
+            ) : partners.length === 0 ? (
+                <div className="card">
+                    <EmptyState
+                        art={NoPartnersArt}
+                        title="No delivery partners yet"
+                        description="Onboard your first partner so orders can be assigned and delivered."
+                        action={
+                            <button type="button" onClick={() => setShowForm(true)} className="btn btn-primary">
+                                <PlusIcon className="size-4" /> Add partner
+                            </button>
+                        }
+                    />
+                </div>
+            ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {partners.map((p) => {
+                        const Vehicle = vehicleIcon(p.vehicleType);
+                        return (
+                            <div key={p.id} className={`card flex flex-col p-5 ${p.isActive ? "" : "bg-zinc-50/80"}`}>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className={`flex-center size-12 rounded-full text-lg font-semibold text-white ${p.isActive ? "bg-app-green" : "bg-zinc-400"}`}>{p.name.charAt(0)}</span>
+                                        <div>
+                                            <p className="font-semibold text-app-text">{p.name}</p>
+                                            <p className="flex items-center gap-1 text-xs text-app-text-light capitalize">
+                                                <Vehicle className="size-3.5" /> {p.vehicleType}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${p.isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-600/15" : "bg-zinc-100 text-zinc-600 ring-zinc-500/15"}`}>
+                                        <span className={`size-1.5 rounded-full ${p.isActive ? "bg-emerald-500" : "bg-zinc-400"}`} />
+                                        {p.isActive ? "Active" : "Inactive"}
+                                    </span>
+                                </div>
+
+                                <div className="mt-5 space-y-2 text-sm text-zinc-600">
+                                    <a href={`mailto:${p.email}`} className="flex items-center gap-2.5 rounded hover:text-app-green">
+                                        <MailIcon className="size-4 text-zinc-400" /> <span className="truncate">{p.email}</span>
+                                    </a>
+                                    <a href={`tel:${p.phone}`} className="flex items-center gap-2.5 rounded hover:text-app-green">
+                                        <PhoneIcon className="size-4 text-zinc-400" /> {p.phone}
+                                    </a>
+                                </div>
+
+                                <div className="mt-5 flex items-center justify-between border-t border-app-border pt-4">
+                                    <span className="text-xs text-app-text-light">Joined {formatDate(p.createdAt)}</span>
+                                    <button type="button" onClick={() => toggleActive(p)} disabled={togglingId === p.id} className={`btn btn-sm ${p.isActive ? "btn-ghost hover:bg-rose-50 hover:text-rose-600" : "btn-dark"}`}>
+                                        {togglingId === p.id && <Loader2Icon className="size-3.5 animate-spin" />}
+                                        {p.isActive ? "Deactivate" : "Activate"}
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             )}
 
-            {/* Add Partner Modal */}
-            {showForm && (
-                <>
-                    <div className="fixed inset-0 bg-app-cream/80 backdrop-blur z-50" onClick={() => setShowForm(false)} />
-                    <div className="fixed inset-0 z-50 flex-center p-4">
-                        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 w-full max-w-lg animate-fade-in">
-                            <div className="flex items-center justify-between mb-5">
-                                <h2 className="text-lg font-semibold text-app-green">Onboard Delivery Partner</h2>
-                                <button type="button" onClick={() => setShowForm(false)} className="p-2 hover:bg-app-cream rounded-lg">
-                                    <XIcon className="size-5" />
+            <Modal open={showForm} onClose={saving ? () => {} : closeForm} title="Onboard delivery partner" description="They'll use these details to sign in to the partner portal." icon={<UserRoundPlusIcon className="size-5 text-app-green" />}>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="dp-name" className="field-label">
+                            Full name
+                        </label>
+                        <input id="dp-name" type="text" required autoComplete="off" value={form.name} onChange={set("name")} className="field" />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <label htmlFor="dp-email" className="field-label">
+                                Email
+                            </label>
+                            <input id="dp-email" type="email" required autoComplete="off" value={form.email} onChange={set("email")} className="field" />
+                        </div>
+                        <div>
+                            <label htmlFor="dp-phone" className="field-label">
+                                Phone
+                            </label>
+                            <input id="dp-phone" type="tel" required autoComplete="off" value={form.phone} onChange={set("phone")} className="field" />
+                        </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                            <label htmlFor="dp-password" className="field-label">
+                                Password
+                            </label>
+                            <div className="relative">
+                                <input id="dp-password" type={showPassword ? "text" : "password"} required minLength={6} autoComplete="new-password" value={form.password} onChange={set("password")} className="field pr-11" />
+                                <button type="button" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-lg p-2 text-zinc-400 hover:bg-app-cream hover:text-app-green">
+                                    {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
                                 </button>
                             </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-app-green mb-1.5">Full Name</label>
-                                    <input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-sm font-medium text-app-green mb-1.5">Email</label>
-                                        <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-app-green mb-1.5">Password</label>
-                                        <input type="password" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-sm font-medium text-app-green mb-1.5">Phone</label>
-                                        <input type="text" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-app-green mb-1.5">Vehicle Type</label>
-                                        <select value={form.vehicleType} onChange={(e) => setForm({ ...form, vehicleType: e.target.value })} className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none bg-white">
-                                            <option value="bike">Bike</option>
-                                            <option value="scooter">Scooter</option>
-                                            <option value="car">Car</option>
-                                        </select>
-                                    </div>
-                                </div>
+                            <p className="mt-1 text-xs text-app-text-light">At least 6 characters.</p>
+                        </div>
+                        <div>
+                            <label htmlFor="dp-vehicle" className="field-label">
+                                Vehicle
+                            </label>
+                            <div className="relative">
+                                <select id="dp-vehicle" value={form.vehicleType} onChange={set("vehicleType")} className="field appearance-none pr-9">
+                                    <option value="bike">Bike</option>
+                                    <option value="scooter">Scooter</option>
+                                    <option value="car">Car</option>
+                                </select>
+                                <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-app-text-light" />
                             </div>
-                            <button type="submit" disabled={saving} className="mt-6 w-full py-3 bg-app-green text-white font-semibold rounded-xl hover:bg-app-green-light transition-colors disabled:opacity-60">
-                                {saving ? "Creating..." : "Create Partner"}
-                            </button>
-                        </form>
+                        </div>
                     </div>
-                </>
-            )}
-        </div>
+                    <button type="submit" disabled={saving} className="btn btn-dark mt-2 w-full py-3">
+                        {saving && <Loader2Icon className="size-4 animate-spin" />}
+                        {saving ? "Creating partner…" : "Create partner"}
+                    </button>
+                </form>
+            </Modal>
+        </>
     );
 }

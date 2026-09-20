@@ -1,3 +1,6 @@
+import { KeyRoundIcon, Loader2Icon } from "lucide-react";
+import Modal from "../ui/Modal";
+
 interface OtpModalProps {
     setOtpModal: (otpModal: string | null) => void;
     otp: string;
@@ -7,37 +10,45 @@ interface OtpModalProps {
 }
 
 export default function OtpModal({ setOtpModal, otp, setOtp, handleComplete, submitting }: OtpModalProps) {
+    const close = () => {
+        if (submitting) return;
+        setOtpModal(null);
+        setOtp("");
+    };
+
     return (
-        <>
-            <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setOtpModal(null)} />
-            <div className="fixed inset-0 z-50 flex-center p-4">
-                <div className="bg-white rounded-2xl p-6 w-full max-w-sm animate-fade-in">
-                    <h3 className="text-lg font-semibold text-app-green mb-2">Enter Delivery OTP</h3>
-                    <p className="text-sm text-zinc-500 mb-5">Ask the customer for the 6-digit OTP shown on their tracking page.</p>
-                    <input
-                        type="text"
-                        maxLength={6}
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                        placeholder="000000"
-                        className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border border-app-border focus:border-app-green outline-none mb-4"
-                    />
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => {
-                                setOtpModal(null);
-                                setOtp("");
-                            }}
-                            className="flex-1 py-2.5 text-sm font-medium text-zinc-600 bg-zinc-100 rounded-xl hover:bg-zinc-200 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button onClick={handleComplete} disabled={otp.length !== 6 || submitting} className="flex-1 py-2.5 text-sm font-medium text-white bg-green-600 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50">
-                            {submitting ? "Verifying..." : "Confirm Delivery"}
-                        </button>
-                    </div>
+        <Modal open onClose={close} title="Confirm delivery" description="Ask the customer for the 6-digit OTP shown on their tracking page." icon={<KeyRoundIcon className="size-5 text-app-green" />} size="sm">
+            <form
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    if (otp.length === 6) handleComplete();
+                }}
+            >
+                <label htmlFor="delivery-otp" className="sr-only">
+                    Delivery OTP
+                </label>
+                <input
+                    id="delivery-otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    placeholder="••••••"
+                    className="field h-16 text-center font-mono text-3xl font-bold tracking-[0.5em] text-app-green placeholder:tracking-[0.5em]"
+                />
+                <div className="mt-5 flex gap-2">
+                    <button type="button" onClick={close} disabled={submitting} className="btn btn-outline flex-1">
+                        Cancel
+                    </button>
+                    <button type="submit" disabled={otp.length !== 6 || submitting} className="btn btn-primary flex-1">
+                        {submitting && <Loader2Icon className="size-4 animate-spin" />}
+                        {submitting ? "Verifying…" : "Confirm"}
+                    </button>
                 </div>
-            </div>
-        </>
+            </form>
+        </Modal>
     );
 }

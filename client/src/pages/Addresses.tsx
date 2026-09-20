@@ -1,85 +1,98 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import toast from "react-hot-toast";
+import { PlusIcon } from "lucide-react";
 import type { Address } from "../types";
-import { MapPinIcon, PlusIcon } from "lucide-react";
-import Loading from "../components/Loading";
 import AddressCard from "../components/AddressCard";
-import AddressForm from "../components/AddressForm";
+import AddressForm, { type AddressFormValues } from "../components/AddressForm";
+import EmptyState from "../components/ui/EmptyState";
+import { ListSkeleton } from "../components/ui/Skeleton";
+import { NoAddressArt } from "../components/illustrations";
 import { useAuth } from "../context/AuthContext";
 import api from "../config/api";
-import toast from "react-hot-toast";
+import { getErrorMessage } from "../lib/errors";
+
+const emptyForm: AddressFormValues = { label: "", address: "", city: "", state: "", zip: "", isDefault: false };
+
+const getLocation = (retries = 3): Promise<{ lat: number; lng: number }> => {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            toast.error("Geolocation not supported. Using default coordinates.");
+            resolve({ lat: 0, lng: 0 });
+            return;
+        }
+
+        const attempt = () => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
+                (error) => {
+                    // Retrying can't help once the user has denied permission
+                    if (retries > 0 && error.code !== error.PERMISSION_DENIED) {
+                        retries--;
+                        setTimeout(attempt, 1000);
+                    } else {
+                        console.warn("Geolocation error:", error.message);
+                        toast.error("Location unavailable. Using default coordinates.");
+                        resolve({ lat: 0, lng: 0 });
+                    }
+                },
+                { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
+            );
+        };
+        attempt();
+    });
+};
 
 const Addresses = () => {
     const { updateUser } = useAuth();
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+
+    // When opened from checkout, send the user back once an address is saved
+    const returnTo = searchParams.get("returnTo");
+    const safeReturnTo = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : null;
 
     const [addresses, setAddresses] = useState<Address[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
+    const [showForm, setShowForm] = useState(() => searchParams.get("new") === "1");
+    const [saving, setSaving] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [form, setForm] = useState({ label: "", address: "", city: "", state: "", zip: "", isDefault: false });
+    const [form, setForm] = useState<AddressFormValues>(emptyForm);
 
-    const resetForm = () => {
-        setForm({ label: "", address: "", city: "", state: "", zip: "", isDefault: false });
+    const closeForm = () => {
         setShowForm(false);
         setEditingId(null);
+        setForm(emptyForm);
     };
 
-    const getLocation = (retries = 3): Promise<{ lat: number; lng: number }> => {
-        return new Promise((resolve) => {
-            if (!navigator.geolocation) {
-                toast.error("Geolocation not supported. Using default coordinates.");
-                resolve({ lat: 0, lng: 0 });
-                return;
-            }
-
-            const attempt = () => {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        resolve({
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                        });
-                    },
-                    (error: any) => {
-                        if (retries > 0) {
-                            retries--;
-                            setTimeout(attempt, 1000);
-                        } else {
-                            console.warn("Geolocation error:", error.message);
-                            toast.error("Location unavailable. Using default coordinates.");
-                            resolve({ lat: 0, lng: 0 });
-                        }
-                    },
-                    {
-                        enableHighAccuracy: false,
-                        timeout: 15000,
-                        maximumAge: 60000,
-                    }
-                );
-            };
-            attempt();
-        });
+    const openNewForm = () => {
+        setEditingId(null);
+        setForm(emptyForm);
+        setShowForm(true);
     };
 
-    const handleSubmit = async (e: React.SubmitEvent) => {
+    const handleSubmit = async (e: SubmitEvent) => {
         e.preventDefault();
+        setSaving(true);
         try {
             const coords = await getLocation();
             const payload = { ...form, ...coords };
+            const previousIds = new Set(addresses.map((a) => a.id));
 
-            if (editingId) {
-                const { data } = await api.put(`/addresses/${editingId}`, payload);
-                setAddresses(data.addresses);
-                updateUser({ addresses: data.addresses });
-                toast.success("Address updated!");
-            } else {
-                const { data } = await api.post(`/addresses`, payload);
-                setAddresses(data.addresses);
-                updateUser({ addresses: data.addresses });
-                toast.success("Address added!");
+            const { data } = editingId ? await api.put(`/addresses/${editingId}`, payload) : await api.post(`/addresses`, payload);
+            setAddresses(data.addresses);
+            updateUser({ addresses: data.addresses });
+            toast.success(editingId ? "Address updated" : "Address added");
+            closeForm();
+
+            if (safeReturnTo && !editingId) {
+                const created = (data.addresses as Address[]).find((a) => !previousIds.has(a.id));
+                navigate(safeReturnTo, { state: { selectAddressId: created?.id } });
             }
-            resetForm();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || error.message || "Failed");
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Couldn't save the address"));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -91,54 +104,50 @@ const Addresses = () => {
 
     useEffect(() => {
         api.get("/addresses")
-            .then(({ data }) => {
-                setAddresses(data.addresses);
-            })
-            .catch((error: any) => {
-                toast.error(error.response?.data?.message || error?.message);
-            })
-            .finally(() => {
-                setLoading(false);
-            });
+            .then(({ data }) => setAddresses(data.addresses))
+            .catch((error) => toast.error(getErrorMessage(error)))
+            .finally(() => setLoading(false));
     }, []);
 
     return (
-        <div className="min-h-screen bg-app-cream">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* page header  */}
-                <div className="flex items-center justify-between mb-8">
-                    <h1 className="text-2xl font-semibold text-app-green">My Addresses</h1>
-                    <button
-                        onClick={() => {
-                            resetForm();
-                            setShowForm(true);
-                        }}
-                        className="px-4 py-2 bg-app-green text-white text-sm font-semibold rounded-xl hover:bg-app-green-light transition-colors flex items-center gap-2"
-                    >
-                        <PlusIcon className="size-4" /> Add Address
-                    </button>
+        <div className="mx-auto max-w-5xl px-4 pt-8 pb-20 sm:px-6 lg:px-8">
+            <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <p className="eyebrow">Account</p>
+                    <h1 className="mt-1.5 text-3xl font-semibold tracking-tight text-app-green">Saved addresses</h1>
+                    <p className="mt-1 text-sm text-app-text-light">Manage where your groceries get delivered.</p>
                 </div>
-
-                {/* Form Modal */}
-                {showForm && <AddressForm resetForm={resetForm} handleSubmit={handleSubmit} form={form} setForm={setForm} editingId={editingId} />}
-
-                {/* Addresses List */}
-                {loading ? (
-                    <Loading />
-                ) : addresses.length === 0 ? (
-                    <div className="text-center py-16">
-                        <MapPinIcon className="size-16 text-app-border mx-auto mb-4" />
-                        <h2 className="text-lg font-semibold text-app-green mb-2">No addresses saved</h2>
-                        <p className="text-sm text-app-text-light">Add an address for faster checkout</p>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {addresses.map((addr) => (
-                            <AddressCard key={addr.id} addr={addr} onEditHandler={onEditHandler} setAddresses={setAddresses} />
-                        ))}
-                    </div>
+                {addresses.length > 0 && (
+                    <button type="button" onClick={openNewForm} className="btn btn-dark">
+                        <PlusIcon className="size-4" /> Add address
+                    </button>
                 )}
             </div>
+
+            {loading ? (
+                <ListSkeleton rows={2} className="h-40" />
+            ) : addresses.length === 0 ? (
+                <div className="card">
+                    <EmptyState
+                        art={NoAddressArt}
+                        title="No saved addresses yet"
+                        description="Add your home or work address for a faster checkout next time."
+                        action={
+                            <button type="button" onClick={openNewForm} className="btn btn-primary">
+                                <PlusIcon className="size-4" /> Add your first address
+                            </button>
+                        }
+                    />
+                </div>
+            ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                    {addresses.map((addr) => (
+                        <AddressCard key={addr.id} addr={addr} onEditHandler={onEditHandler} setAddresses={setAddresses} />
+                    ))}
+                </div>
+            )}
+
+            <AddressForm open={showForm} onClose={closeForm} onSubmit={handleSubmit} form={form} setForm={setForm} editing={Boolean(editingId)} saving={saving} />
         </div>
     );
 };

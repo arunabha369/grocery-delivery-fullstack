@@ -1,41 +1,44 @@
 import { useEffect, useState } from "react";
-import type { Product } from "../../types";
-import { Link } from "react-router-dom";
-import { ArrowRightIcon } from "lucide-react";
-import ProductCard from "../ProductCard";
-import api from "../../config/api";
 import toast from "react-hot-toast";
+import type { Product } from "../../types";
+import ProductCard from "../ProductCard";
+import SectionHeader from "../ui/SectionHeader";
+import { ProductGridSkeleton } from "../ui/Skeleton";
+import api from "../../config/api";
+import { getErrorMessage } from "../../lib/errors";
+
+const GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 xl:gap-5";
 
 const PopularProducts = () => {
     const [products, setProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        api.get("/products?sort=rating")
+        api.get("/products")
             .then(({ data }) => {
-                setProducts(data.products);
+                const inStock: Product[] = data.products.filter((p: Product) => p.stock > 0);
+                // The API has no rating sort, so rank by rating, then by review count
+                inStock.sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount);
+                setProducts(inStock.slice(0, 10));
             })
-            .catch((error: any) => {
-                toast.error(error.response.data.message || error?.message);
-            });
+            .catch((error) => toast.error(getErrorMessage(error)))
+            .finally(() => setLoading(false));
     }, []);
+
+    if (!loading && products.length === 0) return null;
+
     return (
-        <section className="pb-16">
-            <div className="max-w-7xl mx-auto ">
-                <div className="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 className="text-2xl font-semibold">Popular Products</h2>
-                        <p className="text-sm text-app-text-light mt-1">Top-rated products this season</p>
-                    </div>
-                    <Link to="/products" className="text-sm font-semibold text-app-orange hover:text-app-orange-dark flex items-center gap-1 transition-colors">
-                        View All <ArrowRightIcon className="size-4" />
-                    </Link>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5  gap-4 xl:gap-8">
-                    {products.slice(0, 10).map((product) => (
+        <section aria-labelledby="popular-title" className="pt-16 sm:pt-20">
+            <SectionHeader id="popular-title" eyebrow="Top rated" title="Popular right now" description="Customer favourites, loved for freshness and value." linkTo="/products" />
+            {loading ? (
+                <ProductGridSkeleton count={10} className={GRID} />
+            ) : (
+                <div className={GRID}>
+                    {products.map((product) => (
                         <ProductCard key={product.id} product={product} />
                     ))}
                 </div>
-            </div>
+            )}
         </section>
     );
 };

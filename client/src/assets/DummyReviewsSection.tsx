@@ -67,61 +67,64 @@ export default function DummyReviewsSection({ product }: { product: Product }) {
     const maxCount = Math.max(...breakdown, 1);
 
     return (
-        <section className="mt-10 ">
-            <h2 className="text-2xl font-semibold text-app-green mb-6">Customer Reviews</h2>
+        <section id="reviews" aria-labelledby="reviews-title" className="mt-16 scroll-mt-28 sm:mt-20">
+            <p className="eyebrow mb-2">Reviews</p>
+            <h2 id="reviews-title" className="section-title mb-6 sm:mb-8">
+                What customers say
+            </h2>
 
-            <div className="bg-white/50 rounded-2xl p-6 md:p-8">
-                {/* Summary row */}
-                <div className="flex flex-col md:flex-row gap-8 mb-8 pb-8 border-b border-app-border">
-                    {/* Average */}
-                    <div className="flex-center flex-col md:min-w-[160px] lg:w-1/3">
-                        <span className="text-5xl font-semibold text-app-green">{product.rating}</span>
-                        <div className="flex items-center gap-0.5 mt-2 mb-1">
-                            {[1, 2, 3, 4, 5].map((s) => (
-                                <StarIcon key={s} className={`size-4 ${s <= Math.round(product.rating) ? "text-app-warning fill-app-warning" : "text-app-border"}`} />
-                            ))}
-                        </div>
-                        <span className="text-sm text-zinc-600">{product.reviewCount} reviews</span>
+            <div className="grid gap-6 lg:grid-cols-[320px_1fr] lg:gap-8">
+                {/* Summary */}
+                <div className="card h-fit p-6 lg:sticky lg:top-28">
+                    <div className="flex items-end gap-3">
+                        <span className="text-5xl font-semibold tracking-tight text-app-green">{product.rating.toFixed(1)}</span>
+                        <span className="mb-1.5 text-sm text-app-text-light">out of 5</span>
                     </div>
+                    <div className="mt-2 flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                            <StarIcon key={s} className={`size-4 ${s <= Math.round(product.rating) ? "fill-app-warning text-app-warning" : "fill-app-border text-app-border"}`} />
+                        ))}
+                    </div>
+                    <p className="mt-1 text-sm text-app-text-light">Based on {product.reviewCount} reviews</p>
 
-                    {/* Breakdown bars */}
-                    <div className="flex-1 space-y-2">
+                    <div className="mt-6 space-y-2.5">
                         {breakdown.map((count, i) => (
-                            <div key={i} className="flex items-center gap-3">
-                                <span className="text-sm text-zinc-600 w-8 text-right">{5 - i} ★</span>
-                                <div className="flex-1 h-2.5 bg-app-border rounded-full overflow-hidden">
-                                    <div className="h-full bg-app-warning rounded-full transition-all duration-500" style={{ width: `${(count / maxCount) * 100}%` }} />
+                            <div key={i} className="flex items-center gap-3 text-sm">
+                                <span className="flex w-7 items-center gap-0.5 text-zinc-600">
+                                    {5 - i} <StarIcon className="size-3 fill-zinc-400 text-zinc-400" />
+                                </span>
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-app-cream-dark">
+                                    <div className="h-full rounded-full bg-app-warning transition-all duration-500" style={{ width: `${(count / maxCount) * 100}%` }} />
                                 </div>
-                                <span className="text-xs text-zinc-600 w-6">{count}</span>
+                                <span className="w-5 text-right text-xs text-zinc-500">{count}</span>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {/* Individual reviews */}
-                <div className="space-y-6">
+                <ul className="grid gap-4 sm:grid-cols-2">
                     {reviews.map((review) => (
-                        <div key={review.id} className="flex gap-4">
-                            <div className="size-10 rounded-full bg-app-green/10 text-app-green flex-center shrink-0 text-sm font-semibold">{review.avatar}</div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center flex-wrap gap-2 mb-1">
-                                    <span className="text-sm font-semibold text-app-text">{review.name}</span>
-                                    <span className="text-xs text-zinc-600">·</span>
-                                    <span className="text-xs text-zinc-600">{review.date}</span>
+                        <li key={review.id} className="card flex flex-col p-5">
+                            <div className="flex items-center gap-3">
+                                <div className="flex-center size-10 shrink-0 rounded-full bg-app-green/10 text-sm font-semibold text-app-green">{review.avatar}</div>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-app-text">{review.name}</p>
+                                    <p className="text-xs text-zinc-500">{review.date}</p>
                                 </div>
-                                <div className="flex items-center gap-0.5 mb-2">
+                                <div className="ml-auto flex items-center gap-0.5" aria-label={`${review.rating} out of 5 stars`}>
                                     {[1, 2, 3, 4, 5].map((s) => (
-                                        <StarIcon key={s} className={`size-3.5 ${s <= review.rating ? "text-app-warning fill-app-warning" : "text-app-border"}`} />
+                                        <StarIcon key={s} className={`size-3.5 ${s <= review.rating ? "fill-app-warning text-app-warning" : "fill-app-border text-app-border"}`} />
                                     ))}
                                 </div>
-                                <p className="text-sm text-zinc-600 leading-relaxed">{review.comment}</p>
-                                <button className="mt-2 flex items-center gap-1.5 text-xs text-zinc-600 hover:text-app-green transition-colors">
-                                    <ThumbsUpIcon className="size-3.5" /> Helpful ({review.helpful})
-                                </button>
                             </div>
-                        </div>
+                            <p className="mt-3 flex-1 text-sm leading-relaxed text-zinc-600">{review.comment}</p>
+                            <button type="button" className="mt-4 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 -ml-2 text-xs text-zinc-500 hover:bg-app-cream hover:text-app-green">
+                                <ThumbsUpIcon className="size-3.5" /> Helpful ({review.helpful})
+                            </button>
+                        </li>
                     ))}
-                </div>
+                </ul>
             </div>
         </section>
     );

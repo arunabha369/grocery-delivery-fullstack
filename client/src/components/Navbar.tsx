@@ -1,135 +1,200 @@
-import { ArrowUpRightIcon, BikeIcon, ChevronDownIcon, LogOutIcon, MapPinIcon, MenuIcon, PackageIcon, SearchIcon, ShieldIcon, ShoppingCartIcon, UserIcon, XIcon } from "lucide-react";
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState, type SubmitEvent } from "react";
+import { Link, NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronDownIcon, HomeIcon, LogOutIcon, MapPinIcon, MenuIcon, PackageIcon, SearchIcon, ShieldIcon, ShoppingBagIcon, StoreIcon, UserIcon, XIcon, ZapIcon } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
+import { formatPrice } from "../lib/format";
+import Logo from "./Logo";
+
+const navLinks = [
+    { to: "/", label: "Home", icon: HomeIcon },
+    { to: "/products", label: "Shop", icon: StoreIcon },
+    { to: "/deals", label: "Deals", icon: ZapIcon },
+];
+
+function SearchForm({ className = "", idSuffix }: { className?: string; idSuffix?: string }) {
+    const navigate = useNavigate();
+    const { pathname } = useLocation();
+    const [searchParams] = useSearchParams();
+    const urlQuery = pathname === "/search" ? (searchParams.get("q") ?? "") : "";
+
+    // Keep the field in sync when the URL query changes (e.g. back/forward navigation)
+    const [query, setQuery] = useState(urlQuery);
+    const [syncedQuery, setSyncedQuery] = useState(urlQuery);
+    if (urlQuery !== syncedQuery) {
+        setSyncedQuery(urlQuery);
+        setQuery(urlQuery);
+    }
+
+    const handleSubmit = (e: SubmitEvent) => {
+        e.preventDefault();
+        const q = query.trim();
+        if (q) navigate(`/search?q=${encodeURIComponent(q)}`);
+    };
+
+    return (
+        <form role="search" onSubmit={handleSubmit} className={className}>
+            <label htmlFor={`search-${idSuffix}`} className="sr-only">
+                Search groceries
+            </label>
+            <div className="relative">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400" />
+                <input
+                    id={`search-${idSuffix}`}
+                    type="search"
+                    enterKeyHint="search"
+                    placeholder="Search for fruits, dairy, bread…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="h-11 w-full rounded-full border border-transparent bg-app-cream pr-4 pl-10 text-sm text-app-text transition outline-none placeholder:text-zinc-400 hover:border-app-border focus:border-app-green-lighter/40 focus:bg-white focus:ring-4 focus:ring-app-green/10 [&::-webkit-search-cancel-button]:hidden"
+                />
+            </div>
+        </form>
+    );
+}
 
 const Navbar = () => {
     const { user, logout } = useAuth();
-    const { cartCount, setIsCartOpen } = useCart();
-    const [searchQuery, setSearchQuery] = useState("");
-    const [userMenuOpen, setUserMenuOpen] = useState(false);
+    const { cartCount, cartTotal, setIsCartOpen } = useCart();
+    const [menuOpen, setMenuOpen] = useState(false);
     const navigate = useNavigate();
+    const { pathname } = useLocation();
 
-    const handleSearch = (e: React.SubmitEvent) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-            setSearchQuery("");
-        }
-    };
+    // Close the menu whenever the route changes
+    const [menuPath, setMenuPath] = useState(pathname);
+    if (pathname !== menuPath) {
+        setMenuPath(pathname);
+        setMenuOpen(false);
+    }
+
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onKeyDown = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+        document.addEventListener("keydown", onKeyDown);
+        return () => document.removeEventListener("keydown", onKeyDown);
+    }, [menuOpen]);
 
     const handleLogout = () => {
         logout();
-        setUserMenuOpen(false);
+        setMenuOpen(false);
         navigate("/");
     };
 
     return (
-        <nav className="bg-white sticky top-0 z-50 border-b border-app-border">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 gap-4">
-                {/* Logo */}
-                <Link to="/" className="flex items-center gap-2 text-[22px] font-medium shrink-0">
-                    <BikeIcon size={24} /> Instacart
-                </Link>
+        <header className="sticky top-0 z-50 border-b border-app-border/70 bg-white/90 backdrop-blur-md">
+            <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:h-[72px] lg:gap-8 lg:px-8">
+                <Logo />
 
-                <div className="w-full flex items-center justify-end gap-4 lg:gap-10">
-                    {/* Nav Links - Desktop */}
-                    <div className="hidden md:flex items-center gap-6 text-sm text-zinc-600">
-                        <Link to="/">Home</Link>
-                        <Link to="/products">Products</Link>
-                        <Link to="/deals" className="text-app-orange">
-                            Deals
-                        </Link>
-                    </div>
-                    {/* Search */}
-                    <form onSubmit={handleSearch} className="hidden sm:flex flex-1 max-w-sm text-xs sm:text-sm">
-                        <div className="relative w-full">
-                            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-zinc-500" />
-                            <input type="text" placeholder="Search for groceries..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-8 p-2 bg-orange-50 rounded-full ring ring-app-orange/15 focus:ring-app-orange/30" />
-                        </div>
-                    </form>
+                <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
+                    {navLinks.map((link) => (
+                        <NavLink
+                            key={link.to}
+                            to={link.to}
+                            end={link.to === "/"}
+                            className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium ${isActive ? "bg-app-cream text-app-green" : link.to === "/deals" ? "text-app-orange-dark hover:bg-orange-50" : "text-zinc-600 hover:text-app-green"}`}
+                        >
+                            {link.to === "/deals" && <ZapIcon className="size-3.5 fill-current" />}
+                            {link.label}
+                        </NavLink>
+                    ))}
+                </nav>
 
-                    {/* Right Actions */}
-                    <div className="flex items-center gap-3">
-                        {/* Cart */}
-                        <button className="relative p-2 rounded-xl" onClick={() => setIsCartOpen(true)}>
-                            <ShoppingCartIcon className="size-5 text-zinc-900" />
-                            {cartCount > 0 && <span className="absolute -top-1 -right-1 size-4 bg-app-orange text-white text-[10px] rounded-full flex-center">{cartCount}</span>}
-                        </button>
-                        {/* User */}
-                        <div className="relative">
-                            {user ? (
-                                <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-2 p-2">
-                                    <div className="size-7 rounded-full bg-green-950 text-white flex-center">{user.name.charAt(0).toUpperCase()}</div>
-                                    <ChevronDownIcon className="size-3 text-zinc-500" />
+                <SearchForm idSuffix="desktop" className="ml-auto hidden max-w-md flex-1 sm:block" />
+
+                <div className="ml-auto flex items-center gap-1.5 sm:ml-0 sm:gap-2">
+                    {/* Cart */}
+                    <button
+                        type="button"
+                        data-testid="cart-button"
+                        onClick={() => setIsCartOpen(true)}
+                        aria-label={`Open cart, ${cartCount} ${cartCount === 1 ? "item" : "items"}`}
+                        className="relative flex h-11 items-center gap-2 rounded-full px-3 text-app-green hover:bg-app-cream md:bg-app-green md:pr-4 md:pl-3.5 md:text-white md:hover:bg-app-green-light"
+                    >
+                        <ShoppingBagIcon className="size-5" />
+                        <span className="hidden text-sm font-semibold tabular-nums md:inline">{cartCount > 0 ? formatPrice(cartTotal) : "Cart"}</span>
+                        {cartCount > 0 && (
+                            <span key={cartCount} className="flex-center absolute -top-0.5 -right-0.5 h-5 min-w-5 animate-pop rounded-full bg-app-orange px-1 text-[11px] font-bold text-white ring-2 ring-white">
+                                {cartCount > 99 ? "99+" : cartCount}
+                            </span>
+                        )}
+                    </button>
+
+                    {/* Account */}
+                    <div className="relative">
+                        {user ? (
+                            <button type="button" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-haspopup="menu" aria-label="Account menu" className="flex items-center gap-1.5 rounded-full p-1 pr-2 hover:bg-app-cream">
+                                <span className="flex-center size-9 rounded-full bg-app-green text-sm font-semibold text-white">{user.name.charAt(0).toUpperCase()}</span>
+                                <ChevronDownIcon className={`size-4 text-zinc-500 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+                            </button>
+                        ) : (
+                            <div className="flex items-center gap-1">
+                                <Link to="/login" className="btn btn-outline hidden rounded-full md:inline-flex">
+                                    <UserIcon className="size-4" /> Sign in
+                                </Link>
+                                <button type="button" onClick={() => setMenuOpen((o) => !o)} aria-expanded={menuOpen} aria-label="Menu" className="rounded-full p-2.5 text-app-green hover:bg-app-cream md:hidden">
+                                    {menuOpen ? <XIcon className="size-5" /> : <MenuIcon className="size-5" />}
                                 </button>
-                            ) : (
-                                <div className="flex-center gap-2">
-                                    <Link to="/login" className="hidden md:flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-950 rounded-full hover:bg-green-950-light transition-colors">
-                                        <UserIcon size={16} /> Sign In
-                                    </Link>
-                                    {userMenuOpen ? <XIcon className="md:hidden" onClick={() => setUserMenuOpen(!userMenuOpen)} /> : <MenuIcon className="md:hidden" onClick={() => setUserMenuOpen(!userMenuOpen)} />}
-                                </div>
-                            )}
+                            </div>
+                        )}
 
-                            {userMenuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                                    <div className="absolute right-0 mt-2.5 w-56 bg-white rounded-xl shadow-lg border border-app-border py-2 z-50 animate-fade-in">
-                                        {user && (
-                                            <div className="px-4 py-2 border-b border-app-border">
-                                                <p className="text-sm font-medium text-zinc-900">{user?.name}</p>
-                                                <p className="text-xs text-zinc-500">{user?.email}</p>
+                        {menuOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                                <div role="menu" className="absolute top-full right-0 z-50 mt-2 w-64 animate-fade overflow-hidden rounded-2xl border border-app-border bg-white py-2 shadow-float">
+                                    {user && (
+                                        <div className="mb-1 flex items-center gap-3 border-b border-app-border px-4 pt-2 pb-3">
+                                            <span className="flex-center size-10 shrink-0 rounded-full bg-app-green font-semibold text-white">{user.name.charAt(0).toUpperCase()}</span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-semibold text-app-green">{user.name}</p>
+                                                <p className="truncate text-xs text-app-text-light">{user.email}</p>
                                             </div>
-                                        )}
-                                        <div onClick={() => setUserMenuOpen(false)}>
-                                            {!user && (
-                                                <Link to="/login" className="dropdown-link">
-                                                    <UserIcon size={16} /> Sign In{" "}
-                                                </Link>
-                                            )}
-
-                                            {user && (
-                                                <Link to="/orders" className="dropdown-link">
-                                                    <PackageIcon size={16} /> My Orders{" "}
-                                                </Link>
-                                            )}
-
-                                            {user && (
-                                                <Link to="/addresses" className="dropdown-link">
-                                                    <MapPinIcon size={16} /> Addresses{" "}
-                                                </Link>
-                                            )}
-
-                                            <Link to="/products" className="dropdown-link md:hidden">
-                                                <ArrowUpRightIcon size={16} /> Products{" "}
-                                            </Link>
-
-                                            <Link to="/deals" className="dropdown-link md:hidden">
-                                                <ArrowUpRightIcon size={16} /> Deals{" "}
-                                            </Link>
-                                            {user?.isAdmin && (
-                                                <Link to="/admin/products" className="dropdown-link">
-                                                    <ShieldIcon className="text-app-orange-dark" size={16} /> <span className="text-app-orange-dark">Admin Panel</span>{" "}
-                                                </Link>
-                                            )}
-                                            {user && (
-                                                <div className="border-t border-app-border pt-1">
-                                                    <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-2.5 text-sm text-app-error hover:bg-red-50 w-full transition-colors">
-                                                        <LogOutIcon size={16} /> Logout
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
+                                    )}
+
+                                    <div className="border-b border-app-border pb-1 md:hidden">
+                                        {navLinks.map((link) => (
+                                            <Link key={link.to} to={link.to} role="menuitem" className="dropdown-link">
+                                                <link.icon className="size-4" /> {link.label}
+                                            </Link>
+                                        ))}
                                     </div>
-                                </>
-                            )}
-                        </div>
+
+                                    {user ? (
+                                        <>
+                                            <Link to="/orders" role="menuitem" className="dropdown-link">
+                                                <PackageIcon className="size-4" /> My orders
+                                            </Link>
+                                            <Link to="/addresses" role="menuitem" className="dropdown-link">
+                                                <MapPinIcon className="size-4" /> Saved addresses
+                                            </Link>
+                                            {user.isAdmin && (
+                                                <Link to="/admin" role="menuitem" className="dropdown-link text-app-orange-dark">
+                                                    <ShieldIcon className="size-4" /> Admin panel
+                                                </Link>
+                                            )}
+                                            <div className="mt-1 border-t border-app-border pt-1">
+                                                <button type="button" role="menuitem" onClick={handleLogout} className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-app-error hover:bg-red-50">
+                                                    <LogOutIcon className="size-4" /> Log out
+                                                </button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="px-3 pt-2">
+                                            <Link to="/login" role="menuitem" className="btn btn-dark w-full">
+                                                <UserIcon className="size-4" /> Sign in
+                                            </Link>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
-        </nav>
+
+            {/* Mobile search */}
+            <SearchForm idSuffix="mobile" className="px-4 pb-3 sm:hidden" />
+        </header>
     );
 };
 

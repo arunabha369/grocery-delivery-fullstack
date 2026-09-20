@@ -1,107 +1,167 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { PlusIcon, EditIcon, XIcon } from "lucide-react";
-import type { Product } from "../../types";
-import Loading from "../../components/Loading";
-import api from "../../config/api";
 import toast from "react-hot-toast";
+import { ArchiveXIcon, ChevronDownIcon, LeafIcon, PencilIcon, PlusIcon, SearchIcon } from "lucide-react";
+import type { Product } from "../../types";
+import { categoriesData } from "../../assets/assets";
+import AdminPageHeader from "../../components/admin/AdminPageHeader";
+import ConfirmDialog from "../../components/ui/ConfirmDialog";
+import EmptyState from "../../components/ui/EmptyState";
+import { NoResultsArt } from "../../components/illustrations";
+import api from "../../config/api";
+import { getErrorMessage } from "../../lib/errors";
+import { categoryLabel, formatPrice } from "../../lib/format";
 
 export default function AdminProducts() {
-    const currency = import.meta.env.VITE_CURRENCY_SYMBOL || "$";
-
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    const [query, setQuery] = useState("");
+    const [category, setCategory] = useState("");
+    const [pendingRemoval, setPendingRemoval] = useState<Product | null>(null);
 
-    const fetchProducts = async () => {
+    const fetchProducts = useCallback(async () => {
         try {
             const { data } = await api.get("/products");
             setProducts(data.products);
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || error?.message);
+        } catch (error) {
+            toast.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchProducts();
-    }, []);
+    }, [fetchProducts]);
 
-    const handleMarkOutOfStock = async (id: string, name: string) => {
-        if (!window.confirm(`Are you sure you want to mark "${name}" as out of stock?`)) return;
+    const handleMarkOutOfStock = async () => {
+        if (!pendingRemoval) return;
         try {
-            await api.delete(`/products/${id}`);
-            toast.success("Product marked as out of stock");
-            fetchProducts();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to update product");
+            await api.delete(`/products/${pendingRemoval.id}`);
+            toast.success(`${pendingRemoval.name} marked as out of stock`);
+            await fetchProducts();
+        } catch (error) {
+            toast.error(getErrorMessage(error, "Failed to update product"));
         }
     };
 
-    if (loading) return <Loading />;
+    const visible = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        return products.filter((p) => (!category || p.category === category) && (!q || p.name.toLowerCase().includes(q)));
+    }, [products, query, category]);
+
+    const outOfStock = products.filter((p) => p.stock <= 0).length;
 
     return (
         <>
-            <div className="bg-white rounded-2xl shadow-sm border border-app-border overflow-hidden">
-                <div className="px-6 py-5 border-b border-app-border flex items-center justify-between gap-4 flex-wrap">
-                    <h2 className="text-xl font-semibold text-zinc-900">Products</h2>
-                    <Link to="/admin/products/new" className="flex items-center gap-2 px-4 py-2 bg-app-green text-white rounded-xl hover:bg-green-950 transition-colors font-medium text-sm">
-                        <PlusIcon className="size-4" /> Add Product
+            <AdminPageHeader
+                title="Products"
+                description={loading ? "Loading catalogue…" : `${products.length} products · ${outOfStock} out of stock`}
+                actions={
+                    <Link to="/admin/products/new" className="btn btn-primary">
+                        <PlusIcon className="size-4" /> Add product
                     </Link>
+                }
+            />
+
+            <div className="card overflow-hidden">
+                {/* Toolbar */}
+                <div className="flex flex-col gap-3 border-b border-app-border p-4 sm:flex-row sm:items-center">
+                    <label className="relative flex-1">
+                        <span className="sr-only">Search products</span>
+                        <SearchIcon className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-zinc-400" />
+                        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by product name…" className="field h-10 pl-10" />
+                    </label>
+                    <label className="relative sm:w-56">
+                        <span className="sr-only">Filter by category</span>
+                        <select value={category} onChange={(e) => setCategory(e.target.value)} className="field h-10 appearance-none py-0 pr-9">
+                            <option value="">All categories</option>
+                            {categoriesData.map((c) => (
+                                <option key={c.slug} value={c.slug}>
+                                    {c.name}
+                                </option>
+                            ))}
+                        </select>
+                        <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-app-text-light" />
+                    </label>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-app-cream/50 text-zinc-500 uppercase text-xs font-semibold">
-                            <tr>
-                                <th className="px-6 py-4">Product</th>
-                                <th className="px-6 py-4">Price</th>
-                                <th className="px-6 py-4">Stock</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-app-border">
-                            {products.length === 0 ? (
+
+                {loading ? (
+                    <div className="space-y-3 p-5">
+                        {Array.from({ length: 5 }, (_, i) => (
+                            <div key={i} className="skeleton h-14" />
+                        ))}
+                    </div>
+                ) : visible.length === 0 ? (
+                    <EmptyState art={NoResultsArt} title={products.length === 0 ? "No products yet" : "No matching products"} description={products.length === 0 ? "Add your first product to start selling." : "Try a different search term or category."} />
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                            <thead className="bg-app-cream/60 text-xs font-semibold tracking-wide text-app-text-light uppercase">
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-8 text-center text-zinc-500">
-                                        No products found.
-                                    </td>
+                                    <th className="px-5 py-3">Product</th>
+                                    <th className="px-5 py-3">Price</th>
+                                    <th className="px-5 py-3">Stock</th>
+                                    <th className="px-5 py-3 text-right">Actions</th>
                                 </tr>
-                            ) : (
-                                products.map((product) => (
-                                    <tr key={product.id} className="hover:bg-zinc-50/50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <img src={product.image} alt={product.name} className="size-12 rounded-lg object-cover" />
-                                                <div>
-                                                    <p className="font-semibold text-zinc-900">{product.name}</p>
-                                                    <p className="text-xs text-zinc-500">{product.category || "Uncategorized"}</p>
+                            </thead>
+                            <tbody className="divide-y divide-app-border">
+                                {visible.map((product) => {
+                                    const cat = categoriesData.find((c) => c.slug === product.category);
+                                    return (
+                                        <tr key={product.id} className={`hover:bg-app-cream/40 ${product.stock <= 0 ? "opacity-70" : ""}`}>
+                                            <td className="px-5 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="size-12 shrink-0 rounded-xl p-1.5" style={{ backgroundColor: cat?.tint ?? "#f0ebe3" }}>
+                                                        <img src={product.image} alt="" className="size-full object-contain mix-blend-multiply" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="flex items-center gap-1.5 font-semibold text-app-text">
+                                                            {product.name}
+                                                            {product.isOrganic && <LeafIcon className="size-3.5 text-emerald-600" aria-label="Organic" />}
+                                                        </p>
+                                                        <p className="text-xs text-app-text-light">
+                                                            {cat?.name ?? (product.category ? categoryLabel(product.category) : "Uncategorised")} · {product.unit}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 font-medium">
-                                            {currency}
-                                            {product.price.toFixed(2)}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${product.stock > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>{product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <Link to={`/admin/products/${product.id}/edit`} className="p-2 text-zinc-500 hover:text-app-orange bg-zinc-100 hover:bg-orange-50 rounded-lg transition-colors">
-                                                    <EditIcon className="size-4" />
-                                                </Link>
-                                                <button onClick={() => handleMarkOutOfStock(product.id, product.name)} title="Mark Out of Stock" className="p-2 text-zinc-500 hover:text-red-600 bg-zinc-100 hover:bg-red-50 rounded-lg transition-colors">
-                                                    <XIcon className="size-4" />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <p className="font-semibold text-app-green">{formatPrice(product.price)}</p>
+                                                {product.originalPrice > product.price && <p className="text-xs text-app-text-light line-through">{formatPrice(product.originalPrice)}</p>}
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${product.stock <= 0 ? "bg-rose-50 text-rose-700 ring-rose-600/15" : product.stock < 10 ? "bg-amber-50 text-amber-700 ring-amber-600/20" : "bg-emerald-50 text-emerald-700 ring-emerald-600/15"}`}>
+                                                    {product.stock <= 0 ? "Out of stock" : product.stock < 10 ? `Low · ${product.stock} left` : `${product.stock} in stock`}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-3">
+                                                <div className="flex items-center justify-end gap-1.5">
+                                                    <Link to={`/admin/products/${product.id}/edit`} className="btn btn-sm btn-outline" aria-label={`Edit ${product.name}`}>
+                                                        <PencilIcon className="size-3.5" /> Edit
+                                                    </Link>
+                                                    <button type="button" onClick={() => setPendingRemoval(product)} disabled={product.stock <= 0} title="Mark as out of stock" aria-label={`Mark ${product.name} as out of stock`} className="btn btn-sm btn-ghost hover:bg-rose-50 hover:text-rose-600">
+                                                        <ArchiveXIcon className="size-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
+
+            <ConfirmDialog
+                open={Boolean(pendingRemoval)}
+                onClose={() => setPendingRemoval(null)}
+                onConfirm={handleMarkOutOfStock}
+                title="Mark as out of stock?"
+                description={`"${pendingRemoval?.name}" will be hidden from the store until you update its stock.`}
+                confirmLabel="Mark out of stock"
+            />
         </>
     );
 }

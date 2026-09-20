@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
-import type { Product } from "../types";
-import { Zap } from "lucide-react";
-import Loading from "../components/Loading";
-import ProductCard from "../components/ProductCard";
-import api from "../config/api";
+import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
+import { ZapIcon } from "lucide-react";
+import type { Product } from "../types";
+import ProductCard from "../components/ProductCard";
+import EmptyState from "../components/ui/EmptyState";
+import { ProductGridSkeleton } from "../components/ui/Skeleton";
+import { NoDealsArt } from "../components/illustrations";
+import api from "../config/api";
+import { getErrorMessage } from "../lib/errors";
+
+const GRID = "grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:gap-5";
 
 const FlashDeals = () => {
     const [products, setProducts] = useState<Product[]>([]);
@@ -12,38 +18,57 @@ const FlashDeals = () => {
 
     useEffect(() => {
         api.get("/products/flash-deals")
-            .then((res) => setProducts(res.data.products))
-            .catch((error: any) => toast.error(error.response.data.message || error?.message))
+            .then(({ data }) => {
+                const deals: Product[] = data.products.filter((p: Product) => p.stock > 0);
+                // Biggest savings first
+                setProducts(deals.sort((a, b) => b.discount - a.discount));
+            })
+            .catch((error) => toast.error(getErrorMessage(error)))
             .finally(() => setLoading(false));
     }, []);
 
-    return (
-        <div className="min-h-screen bg-app-cream">
-            {/* Banner */}
-            <div className="bg-linear-to-r from-app-orange to-app-orange-dark text-white py-10">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <div className="flex-center gap-2 mb-3">
-                        <Zap className="size-6 fill-white" />
-                        <h1 className="text-3xl font-semibold">Flash Deals</h1>
-                        <Zap className="size-6 fill-white" />
-                    </div>
-                    <p className="text-white/80 max-w-md mx-auto">Limited-time offers on your favorite organic products. Grab them before they're gone!</p>
-                </div>
-            </div>
+    const bestDiscount = products.reduce((max, p) => Math.max(max, p.discount), 0);
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {loading ? (
-                    <Loading />
-                ) : products.length === 0 ? (
-                    <div className="text-center py-16">
-                        <Zap className="size-16 text-app-border mx-auto mb-4" />
-                        <h2 className="text-lg font-semibold text-app-green mb-2">No deals right now</h2>
-                        <p className="text-sm text-app-text-light">Check back soon for amazing offers!</p>
+    return (
+        <div className="mx-auto max-w-7xl px-4 pt-6 pb-20 sm:px-6 lg:px-8">
+            {/* Banner */}
+            <header className="relative mb-8 overflow-hidden rounded-[2rem] bg-linear-to-br from-app-orange to-app-orange-dark px-6 py-10 text-white sm:px-10 sm:py-12">
+                <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:20px_20px]" />
+                <div className="relative flex items-center justify-between gap-6">
+                    <div className="max-w-lg">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold ring-1 ring-white/25 ring-inset">
+                            <ZapIcon className="size-3.5 fill-current" /> Limited-time offers
+                        </span>
+                        <h1 className="mt-4 font-serif text-4xl sm:text-5xl">Flash deals</h1>
+                        <p className="mt-3 text-white/85">
+                            {bestDiscount > 0 ? `Save up to ${bestDiscount}% on your favourite products. ` : "Special prices on your favourite products. "}
+                            Grab them before they're gone!
+                        </p>
                     </div>
-                ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">{products.map((product) => product.stock > 0 && <ProductCard key={product.id} product={product} />)}</div>
-                )}
-            </div>
+                    <NoDealsArt className="hidden h-auto w-56 shrink-0 sm:block lg:w-64" />
+                </div>
+            </header>
+
+            {loading ? (
+                <ProductGridSkeleton count={8} className={GRID} />
+            ) : products.length === 0 ? (
+                <EmptyState
+                    art={NoDealsArt}
+                    title="No deals right now"
+                    description="Our next round of offers is on its way. Check back soon — or browse the full range in the meantime."
+                    action={
+                        <Link to="/products" className="btn btn-dark">
+                            Browse products
+                        </Link>
+                    }
+                />
+            ) : (
+                <div className={GRID}>
+                    {products.map((product) => (
+                        <ProductCard key={product.id} product={product} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

@@ -1,76 +1,110 @@
-import { useEffect, useState } from "react";
-import { BikeIcon } from "lucide-react";
+import { useState, type SubmitEvent } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
+import toast from "react-hot-toast";
+import { ArrowLeftIcon, CircleCheckIcon, EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon } from "lucide-react";
+import Logo from "../../components/Logo";
+import { ScooterArt } from "../../components/illustrations";
 import { heroSectionData } from "../../assets/assets";
 import api from "../../config/api";
-import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
+import { getErrorMessage } from "../../lib/errors";
+
+const perks = ["See every assigned delivery in one place", "Share your live location with customers", "Confirm drop-offs securely with an OTP"];
 
 export default function DeliveryLogin() {
     const navigate = useNavigate();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    const handleSubmit = async (e: React.SubmitEvent) => {
+    if (localStorage.getItem("delivery_token") && localStorage.getItem("delivery_partner")) return <Navigate to="/delivery" replace />;
+
+    const handleSubmit = async (e: SubmitEvent) => {
         e.preventDefault();
         setLoading(true);
         try {
             const { data } = await api.post("/delivery/login", { email, password });
             localStorage.setItem("delivery_token", data.token);
             localStorage.setItem("delivery_partner", JSON.stringify(data.partner));
-            toast.success("Login successful");
-            navigate("/delivery");
-        } catch (error: any) {
-            toast.error(error?.response?.data?.message || error?.message);
+            toast.success(`Welcome back, ${data.partner?.name?.split(" ")[0] ?? "partner"}!`);
+            navigate("/delivery", { replace: true });
+        } catch (error) {
+            toast.error(getErrorMessage(error));
         } finally {
             setLoading(false);
         }
     };
 
-    useEffect(() => {
-        if (localStorage.getItem("delivery_token")) {
-            navigate("/delivery");
-        }
-    }, []);
-
     return (
-        <div className="min-h-screen flex">
-            {/* Left Side */}
-            <div className="hidden lg:flex lg:w-1/2 bg-app-green relative items-center justify-center">
-                <img src={heroSectionData.hero_image} alt="" className="absolute inset-0 object-cover h-full bg-center opacity-10" />
-                <div className="relative text-center px-12">
-                    <h2 className="text-4xl font-semibold text-white mb-4">Delivery Partner Portal</h2>
-                    <p className="text-white/60 font-serif text-xl max-w-sm mx-auto">Manage your deliveries and keep customers happy.</p>
+        <div className="flex min-h-screen bg-app-cream">
+            {/* Brand panel */}
+            <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-app-green p-12 text-white lg:flex xl:p-16">
+                <img src={heroSectionData.hero_image} alt="" className="pointer-events-none absolute inset-0 size-full object-cover opacity-10" />
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_80%_15%,rgba(249,115,22,0.18),transparent_40%)]" />
+                <div className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(255,255,255,0.07)_1px,transparent_1px)] [background-size:22px_22px]" />
+                <Logo tone="light" label="Partner" className="relative" />
+                <ScooterArt className="relative mx-auto h-auto w-full max-w-lg" />
+                <div className="relative">
+                    <h2 className="font-serif text-4xl leading-tight">
+                        Deliver freshness, <span className="text-orange-300 italic">on time.</span>
+                    </h2>
+                    <ul className="mt-6 space-y-3 text-white/75">
+                        {perks.map((perk) => (
+                            <li key={perk} className="flex items-center gap-3">
+                                <CircleCheckIcon className="size-5 text-emerald-300" /> {perk}
+                            </li>
+                        ))}
+                    </ul>
                 </div>
-            </div>
+            </aside>
 
-            {/* Right Side Form */}
-            <div className="flex-1 flex-center px-4 py-12 bg-app-cream">
-                <div className="w-full max-w-md">
-                    <div className="text-center mb-8">
-                        <div className="flex-center gap-2 mb-4">
-                            <BikeIcon className="size-7 text-app-green" />
-                            <span className="text-2xl font-semibold text-app-green">Instacart</span>
-                        </div>
-                        <h1 className="text-2xl font-semibold text-app-green mb-2">Delivery Partner Login</h1>
-                        <p className="text-sm text-app-text-light">Sign in to manage your deliveries</p>
+            {/* Form */}
+            <main className="flex flex-1 flex-col px-4 py-8 sm:px-8">
+                <div className="flex items-center justify-between">
+                    <Link to="/" className="inline-flex items-center gap-1.5 rounded text-sm font-medium text-app-text-light hover:text-app-green">
+                        <ArrowLeftIcon className="size-4" /> Back to store
+                    </Link>
+                    <Logo label="Partner" className="lg:hidden" />
+                </div>
+
+                <div className="flex flex-1 items-center justify-center py-10">
+                    <div className="w-full max-w-md animate-fade-in">
+                        <ScooterArt className="mx-auto mb-6 h-auto w-56 lg:hidden" />
+                        <h1 className="text-3xl font-semibold tracking-tight text-app-green">Partner sign in</h1>
+                        <p className="mt-2 text-app-text-light">Sign in to see your assigned deliveries.</p>
+
+                        <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+                            <div>
+                                <label htmlFor="dl-email" className="field-label">
+                                    Email address
+                                </label>
+                                <div className="relative">
+                                    <MailIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-zinc-400" />
+                                    <input id="dl-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="partner@example.com" className="field h-12 pl-11" />
+                                </div>
+                            </div>
+                            <div>
+                                <label htmlFor="dl-password" className="field-label">
+                                    Password
+                                </label>
+                                <div className="relative">
+                                    <LockIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-zinc-400" />
+                                    <input id="dl-password" type={showPassword ? "text" : "password"} required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="field h-12 pr-12 pl-11" />
+                                    <button type="button" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-2 text-zinc-400 hover:bg-app-cream hover:text-app-green">
+                                        {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="submit" disabled={loading} className="btn btn-dark mt-2 h-12 w-full rounded-xl text-base">
+                                {loading && <Loader2Icon className="size-5 animate-spin" />}
+                                {loading ? "Signing in…" : "Sign in"}
+                            </button>
+                        </form>
+
+                        <p className="mt-8 text-center text-sm text-app-text-light">Accounts are created by your store admin. Contact them if you can't sign in.</p>
                     </div>
-
-                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 space-y-5">
-                        <div>
-                            <label className="block text-sm font-medium text-app-green mb-1.5">Email</label>
-                            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border not-focus:border-app-border text-sm transition-colors" placeholder="partner@example.com" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-app-green mb-1.5">Password</label>
-                            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border not-focus:border-app-border text-sm transition-colors" placeholder="••••••••" />
-                        </div>
-                        <button type="submit" disabled={loading} className="w-full py-3 bg-app-green text-white font-semibold rounded-xl hover:bg-app-green-light transition-colors disabled:opacity-60">
-                            {loading ? "Signing in..." : "Sign In"}
-                        </button>
-                    </form>
                 </div>
-            </div>
+            </main>
         </div>
     );
 }

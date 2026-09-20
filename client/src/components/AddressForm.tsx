@@ -1,63 +1,89 @@
-import { XIcon } from "lucide-react";
+import type { Dispatch, SubmitEvent, SetStateAction } from "react";
+import { Loader2Icon, LocateFixedIcon, MapPinIcon } from "lucide-react";
+import Modal from "./ui/Modal";
 
-const AddressForm = ({ resetForm, handleSubmit, form, setForm, editingId }: any) => {
+export interface AddressFormValues {
+    label: string;
+    address: string;
+    city: string;
+    state: string;
+    zip: string;
+    isDefault: boolean;
+}
+
+interface AddressFormProps {
+    open: boolean;
+    onClose: () => void;
+    onSubmit: (e: SubmitEvent) => void;
+    form: AddressFormValues;
+    setForm: Dispatch<SetStateAction<AddressFormValues>>;
+    editing: boolean;
+    saving: boolean;
+}
+
+const quickLabels = ["Home", "Work", "Other"];
+
+const AddressForm = ({ open, onClose, onSubmit, form, setForm, editing, saving }: AddressFormProps) => {
+    const set = (key: keyof AddressFormValues) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
     return (
-        <>
-            {/* overlay  */}
-            <div className="fixed inset-0 bg-black/40 z-50" />
-
-            {/* form container  */}
-            <div onClick={resetForm} className="fixed inset-0 z-50 flex-center p-4">
-                <form onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 w-full max-w-lg animate-fade-in">
-                    {/* form header  */}
-                    <div className="flex items-center justify-between mb-5">
-                        <h2 className="text-lg font-semibold text-app-green">{editingId ? "Edit Address" : "Add New Address"}</h2>
-                        <button type="button" onClick={resetForm} className="p-2 hover:bg-app-cream rounded-lg">
-                            <XIcon className="size-5" />
-                        </button>
+        <Modal open={open} onClose={saving ? () => {} : onClose} title={editing ? "Edit address" : "Add a new address"} description="Where should we deliver your groceries?" icon={<MapPinIcon className="size-5 text-app-green" />}>
+            <form onSubmit={onSubmit} className="space-y-4">
+                <div>
+                    <label htmlFor="addr-label" className="field-label">
+                        Label
+                    </label>
+                    <div className="mb-2 flex gap-2">
+                        {quickLabels.map((l) => (
+                            <button key={l} type="button" onClick={() => setForm((f) => ({ ...f, label: l }))} aria-pressed={form.label === l} className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${form.label === l ? "bg-app-green text-white" : "bg-app-cream text-app-text-light hover:text-app-green"}`}>
+                                {l}
+                            </button>
+                        ))}
                     </div>
-
-                    {/* form input fields  */}
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-app-green mb-1.5">Label</label>
-                            <input type="text" placeholder="Home, Work, etc." required className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-app-green mb-1.5">Street Address</label>
-                            <input type="text" required className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-sm font-medium text-app-green mb-1.5">City</label>
-                                <input type="text" required className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-app-green mb-1.5">State</label>
-                                <input type="text" required className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div>
-                                <label className="block text-sm font-medium text-app-green mb-1.5">ZIP Code</label>
-                                <input type="text" required className="w-full px-4 py-2.5 text-sm rounded-xl border border-app-border focus:border-app-green outline-none" value={form.zip} onChange={(e) => setForm({ ...form, zip: e.target.value })} />
-                            </div>
-                            <div className="flex items-end pb-1">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm({ ...form, isDefault: e.target.checked })} />
-                                    <span className="text-sm text-app-text">Set as default</span>
-                                </label>
-                            </div>
-                        </div>
+                    <input id="addr-label" type="text" placeholder="Home, Work, Mum's place…" required value={form.label} onChange={set("label")} className="field" />
+                </div>
+                <div>
+                    <label htmlFor="addr-street" className="field-label">
+                        Street address
+                    </label>
+                    <input id="addr-street" type="text" required autoComplete="street-address" placeholder="House no., building, street" value={form.address} onChange={set("address")} className="field" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label htmlFor="addr-city" className="field-label">
+                            City
+                        </label>
+                        <input id="addr-city" type="text" required autoComplete="address-level2" value={form.city} onChange={set("city")} className="field" />
                     </div>
+                    <div>
+                        <label htmlFor="addr-state" className="field-label">
+                            State
+                        </label>
+                        <input id="addr-state" type="text" required autoComplete="address-level1" value={form.state} onChange={set("state")} className="field" />
+                    </div>
+                </div>
+                <div>
+                    <label htmlFor="addr-zip" className="field-label">
+                        ZIP / PIN code
+                    </label>
+                    <input id="addr-zip" type="text" inputMode="numeric" required autoComplete="postal-code" value={form.zip} onChange={set("zip")} className="field" />
+                </div>
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-app-cream px-4 py-3">
+                    <input type="checkbox" checked={form.isDefault} onChange={(e) => setForm((f) => ({ ...f, isDefault: e.target.checked }))} className="size-4" />
+                    <span className="text-sm text-app-text">Set as my default address</span>
+                </label>
 
-                    {/* submit button  */}
-                    <button type="submit" className="mt-6 w-full py-3 bg-app-green text-white font-semibold rounded-xl hover:bg-app-green-light transition-colors">
-                        {editingId ? "Update Address" : "Save Address"}
-                    </button>
-                </form>
-            </div>
-        </>
+                <p className="flex items-start gap-2 text-xs text-app-text-light">
+                    <LocateFixedIcon className="mt-px size-3.5 shrink-0" />
+                    We'll ask for your device location so your delivery partner can find you on the map.
+                </p>
+
+                <button type="submit" disabled={saving} className="btn btn-dark w-full py-3">
+                    {saving && <Loader2Icon className="size-4 animate-spin" />}
+                    {saving ? "Saving address…" : editing ? "Update address" : "Save address"}
+                </button>
+            </form>
+        </Modal>
     );
 };
 
