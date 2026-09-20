@@ -34,12 +34,23 @@ export const getProducts = async (req: Request, res: Response) => {
     else if (sort === "price-high") orderBy.price = "desc";
     else orderBy.createdAt = "desc";
 
-    const products = await prisma.product.findMany({ where, orderBy });
+    // Paging is opt-in: without `limit` the full list is returned, as before
+    const limit = Number(req.query.limit) > 0 ? Number(req.query.limit) : undefined;
+    const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
+
+    const [products, total] = await Promise.all([
+        prisma.product.findMany({ where, orderBy, ...(limit ? { skip: (page - 1) * limit, take: limit } : {}) }),
+        limit ? prisma.product.count({ where }) : Promise.resolve(undefined),
+    ]);
 
     const productsWithDiscount = products.map((p: any) => {
         const discount = p.originalPrice && p.price ? Math.round(((p.originalPrice - p.price) / p.originalPrice) * 100) : 0;
         return { ...p, discount };
     });
+
+    if (limit) {
+        return res.json({ products: productsWithDiscount, total, page, pages: Math.ceil((total ?? 0) / limit) });
+    }
 
     res.json({ products: productsWithDiscount });
 };

@@ -8,13 +8,20 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 export const stripeWebhook = async (request: Request, response: Response) => {
     let event;
-    if (endpointSecret) {
+    if (!endpointSecret) {
+        // Without the secret we cannot trust the payload, and silently ignoring it
+        // would leave paid orders stuck as unpaid forever.
+        console.error("STRIPE_WEBHOOK_SECRET is not set — cannot verify Stripe webhooks");
+        return response.status(500).json({ message: "Webhook secret not configured" });
+    }
+
+    {
         // Get the signature sent by Stripe
         const signature = request.headers["stripe-signature"];
         try {
             event = stripe.webhooks.constructEvent(request.body, signature as string, endpointSecret);
         } catch (err) {
-            console.log(`⚠️ Webhook signature verification failed.`, err.message);
+            console.log(`⚠️ Webhook signature verification failed.`, err instanceof Error ? err.message : err);
             return response.sendStatus(400);
         }
 
@@ -40,10 +47,14 @@ export const stripeWebhook = async (request: Request, response: Response) => {
                 const orderItems = Array.isArray(paidOrder.items) ? paidOrder.items : ([] as any[]);
 
                 for (const item of orderItems) {
-                    await prisma.product.update({
-                        where: { id: item.product },
+                    // Conditional so a sell-out between checkout and payment can't push stock negative
+                    const claimed = await prisma.product.updateMany({
+                        where: { id: item.product, stock: { gte: item.quantity } },
                         data: { stock: { decrement: item.quantity } },
                     });
+                    if (claimed.count === 0) {
+                        console.warn(`Order ${orderId}: not enough stock left for product ${item.product}`);
+                    }
                 }
 
                 if (paidOrder) {

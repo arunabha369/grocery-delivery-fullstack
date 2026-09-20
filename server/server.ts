@@ -17,7 +17,22 @@ const app = express();
 app.post("/api/stripe", express.raw({ type: "application/json" }), stripeWebhook);
 
 // Middleware
-app.use(cors());
+// Restrict the API to your own site(s) when CLIENT_URL is set, e.g.
+// CLIENT_URL=https://yourstore.com,https://www.yourstore.com
+const allowedOrigins = (process.env.CLIENT_URL || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+if (allowedOrigins.length === 0) {
+    console.warn("CLIENT_URL is not set — the API accepts requests from any origin");
+}
+
+app.use(
+    cors({
+        origin: allowedOrigins.length === 0 ? true : allowedOrigins,
+    })
+);
 app.use(express.json());
 
 const port = process.env.PORT || 5000;
@@ -37,7 +52,9 @@ app.use("/api/delivery", deliveryPartnerRouter);
 // Error handling
 app.use((error: any, req: Request, res: Response, next: NextFunction) => {
     console.error(error);
-    res.status(500).json({ message: error.message });
+    // Don't hand internal details (query fragments, stack hints) to clients in production
+    const message = process.env.NODE_ENV === "production" ? "Something went wrong. Please try again." : error.message;
+    res.status(error.status || 500).json({ message });
 });
 
 app.listen(port, () => {

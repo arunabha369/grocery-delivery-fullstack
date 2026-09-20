@@ -83,12 +83,13 @@ export const updateAddress = async (req: Request, res: Response) => {
     if (lat != null) data.lat = Number(lat);
     if (lng != null) data.lng = Number(lng);
 
-    try {
-        await prisma.address.update({
-            where: { id: req.params.id as string },
-            data,
-        });
-    } catch (err) {
+    // Scoped by userId so one account can't edit another account's address
+    const updated = await prisma.address.updateMany({
+        where: { id: req.params.id as string, userId: req.user!.id },
+        data,
+    });
+
+    if (updated.count === 0) {
         return res.status(404).json({ message: "Address not found" });
     }
 
@@ -103,10 +104,13 @@ export const updateAddress = async (req: Request, res: Response) => {
 // Delete address
 // DELETE /api/addresses/:id
 export const deleteAddress = async (req: Request, res: Response) => {
-    try {
-        await prisma.address.delete({ where: { id: req.params.id as string } });
-    } catch (err: any) {
-        console.log(err.message);
+    // Scoped by userId so one account can't delete another account's address
+    const deleted = await prisma.address.deleteMany({
+        where: { id: req.params.id as string, userId: req.user!.id },
+    });
+
+    if (deleted.count === 0) {
+        return res.status(404).json({ message: "Address not found" });
     }
 
     const addresses = await prisma.address.findMany({

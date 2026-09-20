@@ -3,6 +3,14 @@ import { prisma } from "../config/prisma.js";
 import { inngest } from "../inngest/index.js";
 import Stripe from "stripe";
 
+const STRIPE_CURRENCY = (process.env.STRIPE_CURRENCY || "inr").toLowerCase();
+
+class OutOfStockError extends Error {
+    constructor(public productName: string) {
+        super(`${productName} is out of stock`);
+    }
+}
+
 // Create order
 // POST /api/orders
 export const createOrder = async (req: Request, res: Response) => {
@@ -47,19 +55,43 @@ export const createOrder = async (req: Request, res: Response) => {
     const tax = Math.round(subtotal * 0.08 * 100) / 100;
     const total = Math.round((subtotal + deliveryFee + tax) * 100) / 100;
 
-    const order = await prisma.order.create({
-        data: {
-            userId: req.user!.id,
-            items: orderItems,
-            shippingAddress,
-            paymentMethod,
-            subtotal,
-            deliveryFee,
-            tax,
-            total,
-            statusHistory: [{ status: "Placed", note: "Order placed successfully", timestamp: new Date() }],
-        },
-    });
+    const orderData = {
+        userId: req.user!.id,
+        items: orderItems,
+        shippingAddress,
+        paymentMethod,
+        subtotal,
+        deliveryFee,
+        tax,
+        total,
+        statusHistory: [{ status: "Placed", note: "Order placed successfully", timestamp: new Date() }],
+    };
+
+    let order;
+    if (paymentMethod === "card") {
+        // Stock is reserved when payment succeeds (see the Stripe webhook)
+        order = await prisma.order.create({ data: orderData });
+    } else {
+        // Cash on delivery: take the stock and create the order together, so two
+        // shoppers can't both buy the last item between the check and the update.
+        try {
+            order = await prisma.$transaction(async (tx) => {
+                for (const item of orderItems) {
+                    const claimed = await tx.product.updateMany({
+                        where: { id: item.product, stock: { gte: item.quantity } },
+                        data: { stock: { decrement: item.quantity } },
+                    });
+                    if (claimed.count === 0) throw new OutOfStockError(item.name);
+                }
+                return await tx.order.create({ data: orderData });
+            });
+        } catch (error) {
+            if (error instanceof OutOfStockError) {
+                return res.status(409).json({ message: `${error.productName} is out of stock` });
+            }
+            throw error;
+        }
+    }
 
     if (paymentMethod === "card") {
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -71,9 +103,11 @@ export const createOrder = async (req: Request, res: Response) => {
             line_items: [
                 {
                     price_data: {
-                        currency: "usd",
+                        // Must match the currency the storefront prices are in (client VITE_CURRENCY_SYMBOL).
+                        // Override with STRIPE_CURRENCY if your Stripe account settles in something else.
+                        currency: STRIPE_CURRENCY,
                         product_data: {
-                            name: "Payment Groceries",
+                            name: `Instacart order #${order.id.slice(-8).toUpperCase()}`,
                         },
                         unit_amount: Math.round(total * 100),
                     },
@@ -87,14 +121,6 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     res.json({ order });
-
-    // Decrease stock
-    for (const item of orderItems) {
-        await prisma.product.update({
-            where: { id: item.product },
-            data: { stock: { decrement: item.quantity } },
-        });
-    }
 
     // Send stock update events for each product in the order
     for (const item of orderItems) {
@@ -143,8 +169,14 @@ export const getOrder = async (req: Request, res: Response) => {
 
 // Update order status (admin)
 // PUT /api/orders/:id/status
+const ORDER_STATUSES = ["Placed", "Confirmed", "Assigned", "Packed", "Out for Delivery", "Delivered", "Cancelled"];
+
 export const updateOrderStatus = async (req: Request, res: Response) => {
     const { status, note } = req.body;
+
+    if (!ORDER_STATUSES.includes(status)) {
+        return res.status(400).json({ message: "Invalid order status" });
+    }
     const order = await prisma.order.findUnique({ where: { id: req.params.id as string } });
 
     if (!order) {

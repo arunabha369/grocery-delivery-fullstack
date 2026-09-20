@@ -346,7 +346,13 @@ SMTP_PASS="your_smtp_password"
 
 # Stripe
 STRIPE_SECRET_KEY="sk_test_..."
-STRIPE_WEBHOOK_SECRET="whsec_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."   # required: without it the webhook rejects every event
+# Currency Stripe charges in. Must match the storefront's VITE_CURRENCY_SYMBOL.
+STRIPE_CURRENCY="inr"
+
+# Allowed browser origins for the API (comma-separated).
+# Leave unset for local development; set it in production.
+CLIENT_URL="https://your-store.vercel.app"
 ```
 
 #### Client (`/client/.env`)
